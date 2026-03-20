@@ -1,0 +1,34 @@
+# Drop successful health check traces
+# These are high-volume, low-value traces that would overheml backends
+name: drop-health-checks
+type: and
+and:
+  and_sub_policy:
+    - name: health-url-paths
+      type: string_attribute
+      string_attribute:
+        key: url.path
+        values:
+          - "^/health.*"
+          - "^/ready.*"
+          - "^/live.*"
+          - "^/actuator/health.*"
+        enabled_regex_matching: true # O nome correto da chave é "enabled" (com 'd' no final)
+    
+    - name: http-get-method
+      type: string_attribute
+      string_attribute:
+        key: http.request.method
+        values: ["GET"]
+    
+    - name: http-success-status
+      type: numeric_attribute
+      numeric_attribute:
+        key: http.response.status_code
+        min_value: 200
+        max_value: 200
+    
+    - name: probabilistic-drop
+      type: probabilistic
+      probabilistic:
+        sampling_percentage: 0

@@ -1,0 +1,7 @@
+# Always keep traces with errors
+# Error traces are critical for debugging and should never be dropped
+name: keep-erros
+type: status_code
+status_code:
+  status_codes:
+    - ERROR

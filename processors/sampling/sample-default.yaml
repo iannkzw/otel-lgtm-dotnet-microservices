@@ -1,0 +1,4 @@
+# Default policy: keep all remaining traces
+# This is a catch-all policy that runs after others policies
+name: sample-everything-else
+type: always_sample

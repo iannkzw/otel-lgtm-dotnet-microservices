@@ -1,0 +1,13 @@
+apiVersion: 1
+
+# A policy tree de unified alerting e recurso unico do Grafana.
+# Este arquivo e o unico dono versionado de `policies` na PoC.
+policies:
+  - orgId: 1
+    receiver: OTel PoC Local Webhook
+    group_by:
+      - alertname
+      - grafana_folder
+    group_wait: 0s
+    group_interval: 1m
+    repeat_interval: 4h

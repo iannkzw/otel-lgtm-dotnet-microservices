@@ -1,0 +1,6 @@
+src/NotificationWorker/bin
+src/NotificationWorker/obj
+src/OrderService/bin
+src/OrderService/obj
+src/ProcessingWorker/bin
+src/ProcessingWorker/obj

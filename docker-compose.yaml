@@ -1,0 +1,226 @@
+services:
+
+  alert-webhook-mock:
+    build:
+      context: .
+      dockerfile: tools/alert-webhook-mock/Dockerfile
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - otel-demo
+
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning/dashboards/otel-poc-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/otel-poc-dashboards.yaml:ro
+      - ./grafana/dashboards/otel-poc-overview.json:/otel-lgtm/dashboards/otel-poc-overview.json:ro
+      - ./grafana/provisioning/alerting/otel-poc-alert-rules.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/otel-poc-alert-rules.yaml:ro
+      - ./grafana/provisioning/alerting/otel-poc-contact-points.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/otel-poc-contact-points.yaml:ro
+      - ./grafana/provisioning/alerting/otel-poc-notification-policies.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/otel-poc-notification-policies.yaml:ro
+    networks:
+      - otel-demo
+  
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:latest
+    environment:
+      - POD_IP=0.0.0.0
+      - TRACES_URL=http://lgtm:4318/v1/traces
+      - LOGS_URL=http://lgtm:4318/v1/logs
+      - METRICS_URL=http://lgtm:4318/v1/metrics
+    volumes:
+      - ./otelcol.yaml:/etc/otelcol/config.yaml:ro,z
+      - ./processors:/etc/otelcol/processors:ro,z
+    command: ["--config","/etc/otelcol/config.yaml"]
+    working_dir: /etc/otelcol
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      lgtm:
+        condition: service_started
+    networks:
+      - otel-demo
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo srvr | nc -w 2 localhost 2181 | grep Mode || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - otel-demo
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      - otel-demo
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: otelpoc
+      POSTGRES_USER: poc
+      POSTGRES_PASSWORD: poc
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poc -d otelpoc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - otel-demo
+
+  order-service:
+    build:
+      context: .
+      dockerfile: src/OrderService/Dockerfile
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
+      OTEL_SERVICE_NAME: order-service
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      POSTGRES_CONNECTION_STRING: Host=postgres;Database=otelpoc;Username=poc;Password=poc
+    ports:
+      - "8080:8080"
+    depends_on:
+      otelcol:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - otel-demo
+
+  processing-worker:
+    build:
+      context: .
+      dockerfile: src/ProcessingWorker/Dockerfile
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
+      OTEL_SERVICE_NAME: processing-worker
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC_ORDERS: orders
+      KAFKA_TOPIC_NOTIFICATIONS: notifications
+      KAFKA_GROUP_ID_PROCESSING: processing-worker
+      ORDER_SERVICE_BASE_URL: http://order-service:8080/
+      ORDER_SERVICE_TIMEOUT_SECONDS: 5
+    depends_on:
+      otelcol:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      order-service:
+        condition: service_started
+    networks:
+      - otel-demo
+
+  notification-worker:
+    build:
+      context: .
+      dockerfile: src/NotificationWorker/Dockerfile
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
+      OTEL_SERVICE_NAME: notification-worker
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC_NOTIFICATIONS: notifications
+      KAFKA_GROUP_ID_NOTIFICATION: notification-worker
+      POSTGRES_CONNECTION_STRING: Host=postgres;Database=otelpoc;Username=poc;Password=poc
+    depends_on:
+      otelcol:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - otel-demo
+
+  telemetrygen-traces:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest
+    container_name: telemetrygen
+    # O comando abaixo envia traces para o endpoint do coletor via gRPC
+    command: 
+      - traces
+      - --otlp-endpoint 
+      - otelcol:4317 
+      - --otlp-insecure
+      - --rate
+      - "10"
+      - --duration
+      - "5m"
+    depends_on:
+      - otelcol
+    networks:
+      - otel-demo
+
+  telemetrygen-logs:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest
+    command:
+      - logs
+      - --otlp-endpoint
+      - otelcol:4317
+      - --otlp-insecure
+      - --rate
+      - "5"
+      - --duration
+      - "2m"
+    depends_on:
+      - otelcol
+    networks:
+      - otel-demo
+
+  telemetrygen-metrics:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest
+    command:
+      - metrics
+      - --otlp-endpoint
+      - otelcol:4317
+      - --otlp-insecure
+      - --rate
+      - "2"
+      - --duration
+      - "2m"
+    depends_on:
+      - otelcol
+    networks:
+      - otel-demo
+
+volumes:
+  postgres-data:
+
+networks:
+  otel-demo:
+    name: otel-demo

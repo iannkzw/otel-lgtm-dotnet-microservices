@@ -1,0 +1,190 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: otel-poc-m3-alerts
+    folder: OTel PoC
+    interval: 30s
+    rules:
+      - uid: otel_poc_order_p95_high
+        title: OrderService P95 > 500 ms
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: histogram_quantile(0.95, sum by (le) (rate(orders_create_duration_milliseconds_bucket{service_name="order-service",result="created"}[5m])))
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: []
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - B
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 500
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        dashboardUid: otel-poc-m3-overview
+        panelId: 2
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: Latencia P95 de criacao acima de 500 ms por 1 minuto
+          description: O caminho feliz de POST /orders permaneceu acima do alvo de latencia na janela avaliada
+          runbook: local-demo
+        labels:
+          severity: warning
+          service: order-service
+          signal: latency
+          scope: otel-poc
+        isPaused: false
+      - uid: otel_poc_processing_lag_high
+        title: ProcessingWorker lag > 100
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: sum by (topic, consumer_group) (kafka_consumer_lag{service_name="processing-worker",topic="orders"})
+              intervalMs: 1000
+              legendFormat: __auto
+              maxDataPoints: 43200
+              range: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: []
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - B
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 100
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        dashboardUid: otel-poc-m3-overview
+        panelId: 6
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: ProcessingWorker acumulou mais de 100 mensagens de lag por 1 minuto
+          description: O consumidor do topic orders permaneceu atrasado acima do threshold acordado
+          runbook: local-demo
+        labels:
+          severity: warning
+          service: processing-worker
+          signal: consumer_lag
+          scope: otel-poc
+        isPaused: false

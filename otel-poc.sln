@@ -1,0 +1,33 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrderService", "src\OrderService\OrderService.csproj", "{B6952AAB-CB17-4DA0-BF50-79ABF7D7B9FD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProcessingWorker", "src\ProcessingWorker\ProcessingWorker.csproj", "{5D03BC6D-2BF3-4F17-9FC5-76A802F6A154}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NotificationWorker", "src\NotificationWorker\NotificationWorker.csproj", "{F5D3EC68-4AA4-469D-B307-F85FC2DE95E9}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B6952AAB-CB17-4DA0-BF50-79ABF7D7B9FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6952AAB-CB17-4DA0-BF50-79ABF7D7B9FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B6952AAB-CB17-4DA0-BF50-79ABF7D7B9FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B6952AAB-CB17-4DA0-BF50-79ABF7D7B9FD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5D03BC6D-2BF3-4F17-9FC5-76A802F6A154}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D03BC6D-2BF3-4F17-9FC5-76A802F6A154}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D03BC6D-2BF3-4F17-9FC5-76A802F6A154}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D03BC6D-2BF3-4F17-9FC5-76A802F6A154}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F5D3EC68-4AA4-469D-B307-F85FC2DE95E9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F5D3EC68-4AA4-469D-B307-F85FC2DE95E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F5D3EC68-4AA4-469D-B307-F85FC2DE95E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F5D3EC68-4AA4-469D-B307-F85FC2DE95E9}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

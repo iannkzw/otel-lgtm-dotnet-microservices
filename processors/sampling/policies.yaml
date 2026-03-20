@@ -1,0 +1,5 @@
+# Sampling policies index
+# Each policy is defined in its own file for easier maintenance
+- ${file:processors/sampling/drop-health-checks.yaml}
+- ${file:processors/sampling/keep-errors.yaml}
+- ${file:processors/sampling/sample-default.yaml}

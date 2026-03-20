@@ -1,0 +1,97 @@
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "${POD_IP}:4317"
+        max_recv_msg_size_mib: 999999
+        include_metadata: true
+      http:
+        endpoint: "${POD_IP}:4318"
+        include_metadata: true
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otelcol
+          metric_relabel_configs:
+            - action: drop
+              regex: .*grpc_io.*
+              source_labels:
+                - __name__
+          scrape_interval: 60s
+          static_configs:
+            - targets:
+                - ${POD_IP}:8888
+
+processors:
+
+  tail_sampling:
+    decision_wait: 5s
+    num_traces: 10000
+    policies: ${file:processors/sampling/policies.yaml}
+
+  span:
+    exclude:
+      match_type: strict
+      span_names: ["Transaction.commit"]
+    name:
+      from_attributes: ["resource.service.name"]
+  
+  batch:
+    send_batch_size: 1000
+    timeout: 5s
+  
+  memory_limiter:
+    check_interval: 30s
+    limit_mib: 2024
+    spike_limit_mib: 1500
+
+exporters:
+  debug:
+  otlphttp/traces:
+    traces_endpoint: ${TRACES_URL}
+    #tls:
+    #  insecure: false
+    #  insecure_skip_verify: true
+    #headers:
+    #  "X-Scope-OrgID": otel-collector-hg
+  otlphttp/logs:
+    logs_endpoint: ${LOGS_URL}
+    #tls:
+    #  insecure: false
+    #  insecure_skip_verify: true
+    #headers:
+    #  "X-Scope-OrgID": otel-collector-hg
+  otlphttp/metrics:
+    metrics_endpoint: ${METRICS_URL}
+    #tls:
+    #  insecure: true
+    #  insecure_skip_verify: false
+    #headers:
+    #  "X-Scope-OrgID": otel-collector-hg
+    #auth:
+    #  authenticator: basicauth/logs
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, tail_sampling, span, batch]
+      exporters: [otlphttp/traces, debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter]
+      exporters: [otlphttp/logs, debug]
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [memory_limiter, batch]
+      exporters: [ otlphttp/metrics, debug]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: ${POD_IP}
+                port: 8888
+      level: detailed

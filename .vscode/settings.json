@@ -1,0 +1,5 @@
+{
+  "yaml.schemas": {
+    "./.vscode/schemas/grafana-dashboard-provider.schema.json": "grafana/provisioning/dashboards/otel-poc-dashboards.yaml"
+  }
+}
