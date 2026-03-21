@@ -20,6 +20,7 @@ O caminho principal da demo é:
 | `notification-worker` | Consome `notifications` e persiste o resultado final | Rede interna Docker |
 | `postgres` | Banco compartilhado da PoC | Rede interna Docker |
 | `kafka` | Backbone de eventos entre os serviços | Rede interna Docker |
+| `kafka-ui` | Interface visual para tópicos, consumer groups e mensagens do Kafka | Host: `http://localhost:8085` |
 | `zookeeper` | Coordenação do Kafka | Rede interna Docker |
 | `otelcol` | Recebe OTLP e encaminha sinais para a stack LGTM | Host: `localhost:4317` e `localhost:4318` |
 | `lgtm` | Grafana, Tempo, Loki e Prometheus em um único container | Host: `http://localhost:3000` |
@@ -30,7 +31,7 @@ O dashboard e os alertas da PoC já fazem parte da baseline validada do reposit�
 ## Pré-requisitos
 
 - Docker Desktop, ou ambiente Docker equivalente, com suporte a `docker compose`.
-- Portas `3000`, `8080`, `4317` e `4318` livres no host.
+- Portas `3000`, `8080`, `8085`, `4317` e `4318` livres no host.
 - Shell local para executar comandos `docker compose` e requests HTTP.
 
 Observações:
@@ -60,7 +61,7 @@ Invoke-WebRequest -UseBasicParsing http://localhost:8080/health | Select-Object 
 
 Resultado esperado, em alto nível:
 
-- `lgtm`, `otelcol`, `kafka`, `postgres`, `order-service`, `processing-worker`, `notification-worker` e `alert-webhook-mock` aparecem iniciados.
+- `lgtm`, `otelcol`, `kafka`, `kafka-ui`, `postgres`, `order-service`, `processing-worker`, `notification-worker` e `alert-webhook-mock` aparecem iniciados.
 - O Grafana pode levar alguns instantes para provisionar dashboard e alertas após a primeira subida.
 - `order-service` responde no host, enquanto workers, Kafka, PostgreSQL e webhook operam apenas na rede Docker.
 
@@ -80,6 +81,7 @@ Use a tabela abaixo para evitar confundir URLs do host com endpoints internos do
 | --- | --- | --- | --- |
 | Grafana / LGTM | `http://localhost:3000` | `http://lgtm:3000` | Use `localhost` a partir do host |
 | OrderService | `http://localhost:8080` | `http://order-service:8080` | O `processing-worker` usa o endpoint interno |
+| Kafka UI | `http://localhost:8085` | `http://kafka-ui:8080` | Interface visual para tópicos e consumer groups |
 | OTLP gRPC | `localhost:4317` | `http://otelcol:4317` | Exportação dos serviços para o collector |
 | OTLP HTTP | `localhost:4318` | `http://otelcol:4318` | Exposto no host para inspeção e testes |
 | Kafka | não exposto | `kafka:9092` | Uso exclusivo entre containers |
@@ -117,6 +119,33 @@ Com isso, o restante do fluxo segue automaticamente pela baseline da PoC:
 3. `notification-worker` consome e persiste o resultado final.
 
 Para esta demo, não é necessário fazer chamadas manuais para Kafka, PostgreSQL ou workers.
+
+## Kafka UI
+
+Para inspeção visual do Kafka, a PoC inclui `Kafka UI`, que é hoje uma das opções mais usadas para ambiente local e diagnóstico rápido.
+
+Acesso pelo host:
+
+- `http://localhost:8085`
+
+Uso principal na demo:
+
+1. Abra a UI e selecione o cluster `otel-poc`.
+2. Consulte os tópicos `orders` e `notifications`.
+3. Consulte os consumer groups `processing-worker` e `notification-worker`.
+4. Verifique mensagens, offsets e lag de consumo sem depender apenas de comandos no terminal.
+
+Se quiser subir apenas a UI depois que o restante do stack já estiver no ar:
+
+```powershell
+docker compose up -d kafka-ui
+```
+
+Validação rápida:
+
+```powershell
+docker compose ps kafka-ui
+```
 
 ## Gerador de Carga (Automatização Opcional)
 
@@ -233,7 +262,7 @@ Pontos importantes:
 
 ### Porta em uso no host
 
-Se `docker compose up -d --build` falhar por conflito de porta, verifique se algo já está usando `3000`, `8080`, `4317` ou `4318`. Essas são as portas do host exigidas pela demo.
+Se `docker compose up -d --build` falhar por conflito de porta, verifique se algo já está usando `3000`, `8080`, `8085`, `4317` ou `4318`. Essas são as portas do host exigidas pela demo.
 
 ### Container ainda inicializando ou não saudável
 

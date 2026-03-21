@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Confluent.Kafka;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OrderService.Contracts;
 using OrderService.Data;
 using OrderService.Extensions;
@@ -17,7 +18,7 @@ builder.WebHost.UseUrls("http://0.0.0.0:8080");
 builder.Services.AddProblemDetails();
 builder.Services.AddOtelInstrumentation(builder.Configuration);
 builder.Services.AddDbContext<OrderDbContext>(options => options.UseNpgsql(postgresConnectionString));
-builder.Services.AddSingleton<IProducer<string, string>>(_ =>
+builder.Services.AddSingleton(_ =>
     new ProducerBuilder<string, string>(new ProducerConfig
     {
         BootstrapServers = kafkaBootstrapServers,
@@ -209,11 +210,34 @@ static async Task EnsureDatabaseSchemaAsync(WebApplication app)
 
     try
     {
-        await dbContext.Database.EnsureCreatedAsync();
+        await dbContext.Database.OpenConnectionAsync();
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS orders (
+                id uuid PRIMARY KEY,
+                description text NOT NULL,
+                status text NOT NULL,
+                created_at_utc timestamp with time zone NOT NULL,
+                published_at_utc timestamp with time zone NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_orders_status
+                ON orders (status);
+            """);
         logger.LogInformation("Order database schema ensured successfully.");
+    }
+    catch (PostgresException ex)
+    {
+        logger.LogError(ex, "Failed to create order service schema objects at startup.");
+        throw;
     }
     catch (Exception ex)
     {
         logger.LogError(ex, "Failed to ensure order database schema at startup.");
+        throw;
+    }
+    finally
+    {
+        await dbContext.Database.CloseConnectionAsync();
     }
 }
