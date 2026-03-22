@@ -158,6 +158,16 @@ Status atual: feature `gerador-de-carga` foi implementada em `tools/load-generat
 
 Status atual: a feature foi especificada como o proximo passo de M4 com foco em utilitario minimo de demonstracao, reaproveitando o compose da raiz, o endpoint real do `OrderService` e os alertas Grafana ja provisionados.
 
+**Exportação de Logs OTLP** — DONE
+
+- Habilitar `builder.Logging.AddOpenTelemetry(...)` nos 3 serviços, reutilizando `otlpEndpoint` e `resourceBuilder` já existentes em cada `OtelExtensions.cs`
+- Garantir que logs estruturados dos 3 serviços chegam ao OTel Collector e ao Loki, com campos `TraceId`, `SpanId` e `service_name`
+- Corrigir o crash `InvalidOperationException: Nullable object must have a value` no `ProcessingWorker/Worker.cs` causado por pedidos com status `pending_publish` atingindo a linha `order.PublishedAtUtc!.Value` sem guarda de status
+- Nenhum novo pacote NuGet necessário — `OpenTelemetry.Extensions.Hosting` já inclui suporte a logs via `services.AddLogging`
+- `otelcol.yaml` já possui pipeline `logs` funcional apontando para Loki — nenhuma alteração necessária no collector
+
+Status atual: T1 (fix `HandleLookupOutcome` com guarda `!= "published"` antes do acesso a `PublishedAtUtc`) e T2/T3/T4 (`services.AddLogging(logging => logging.AddOpenTelemetry(...))` nos 3 `OtelExtensions.cs` com `IncludeFormattedMessage = true` e `IncludeScopes = true`) implementados. Build da solution em container SDK 10 passou com 0 erros e 0 warnings.
+
 ---
 
 ## Future Considerations

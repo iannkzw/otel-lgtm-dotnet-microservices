@@ -1,11 +1,18 @@
 # State
 
-**Last Updated:** 2026-03-19
-**Current Work:** M4 completo - todas as features do roadmap finalizadas. `README.md` criado e validado contra artefatos da baseline, `tools/load-generator/generate-orders.ps1` implementado com spec/design/tasks, ROADMAP atualizado com status DONE para ambas as features finais.
+**Last Updated:** 2026-03-21
+**Current Work:** M4 CONCLUÍDO — feature `exportacao-logs-otlp` implementada (T1 fix nullable bug + T2/T3/T4 AddOpenTelemetry logs nos 3 serviços). Build passou com 0 erros. Próxima feature sugerida: `exemplars-metricas-traces` (ver `.specs/next-feature-prompt.txt`).
 
 ---
 
 ## Recent Decisions
+
+### AD-053: Logs OTel adicionados via `services.AddLogging` reutilizando recursos já existentes do OtelExtensions (2026-03-19)
+
+**Decision:** A habilitação de logs OTLP deve ser feita chamando `services.AddLogging(logging => logging.AddOpenTelemetry(...))` dentro do método `AddOtelInstrumentation` existente em cada `OtelExtensions.cs`, reutilizando `otlpEndpoint` e `resourceBuilder` já declarados no mesmo escopo, sem criar métodos extras nem pacotes novos.
+**Reason:** `OpenTelemetry.Extensions.Hosting` já inclui suporte a `AddOpenTelemetry()` para logs; não há razão para adicionar dependência nova. Reutilizar as variáveis locais existentes evita duplicação e mantém o bootstrap coeso em um único método.
+**Trade-off:** Os três serviços ficam com estrutura idêntica de bootstrap, o que é aceitável para uma PoC. Em produção, um método de extensão compartilhado evitaria repetição.
+**Impact:** O fix do nullable bug (`HandleLookupOutcome` sem guarda de status) deve ser executado antes do build de validação para não poluir os logs de observabilidade com `InvalidOperationException` recorrentes durante a verificação end-to-end.
 
 ### AD-052: Implementacao do gerador de carga fica restrita ao script host-side e ao README minimo (2026-03-19)
 
