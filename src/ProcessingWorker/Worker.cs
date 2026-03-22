@@ -310,7 +310,24 @@ public sealed class Worker(
             return false;
         }
 
-        if (string.Equals(order.Status, "published", StringComparison.OrdinalIgnoreCase) && order.PublishedAtUtc is null)
+        if (!string.Equals(order.Status, "published", StringComparison.OrdinalIgnoreCase))
+        {
+            result = ProcessingResults.InvalidPayload;
+            activity?.SetTag("error.type", "order_not_published");
+            activity?.SetStatus(ActivityStatusCode.Error, $"Order status '{order.Status}' is not publishable.");
+
+            logger.LogError(
+                "Order not in published status {Classification} for order {OrderId} {Status} {TraceId} {SpanId}",
+                "order_not_published",
+                orderEvent.OrderId,
+                order.Status,
+                activity?.TraceId.ToString(),
+                activity?.SpanId.ToString());
+
+            return false;
+        }
+
+        if (order.PublishedAtUtc is null)
         {
             result = ProcessingResults.InvalidPayload;
             activity?.SetTag("error.type", "published_at_missing");

@@ -1,4 +1,5 @@
 using OpenTelemetry.Exporter;
+using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -43,7 +44,18 @@ public static class OtelExtensions
                     options.Endpoint = new Uri(otlpEndpoint);
                     options.Protocol = OtlpExportProtocol.Grpc;
                 }));
-
+        services.AddLogging(logging =>
+            logging.AddOpenTelemetry(options =>
+            {
+                options.SetResourceBuilder(resourceBuilder);
+                options.AddOtlpExporter(exporter =>
+                {
+                    exporter.Endpoint = new Uri(otlpEndpoint);
+                    exporter.Protocol = OtlpExportProtocol.Grpc;
+                });
+                options.IncludeFormattedMessage = true;
+                options.IncludeScopes = true;
+            }));
         return services;
     }
 }
