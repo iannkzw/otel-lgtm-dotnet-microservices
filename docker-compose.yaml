@@ -103,6 +103,14 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_replication_slots=5"
+      - "-c"
+      - "max_wal_senders=5"
     environment:
       POSTGRES_DB: otelpoc
       POSTGRES_USER: poc
@@ -115,6 +123,46 @@ services:
       start_period: 5s
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./tools/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - otel-demo
+
+  kafka-connect:
+    image: debezium/connect:2.4
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: "1"
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/connectors || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - otel-demo
+
+  connector-init:
+    image: curlimages/curl:latest
+    depends_on:
+      kafka-connect:
+        condition: service_healthy
+    volumes:
+      - ./tools/debezium/order-outbox-connector.json:/connector.json:ro
+    command: >
+      sh -c "curl -sf -X POST http://kafka-connect:8083/connectors
+      -H 'Content-Type: application/json'
+      -d @/connector.json &&
+      echo 'Debezium connector registered successfully'"
     networks:
       - otel-demo
 
@@ -125,16 +173,15 @@ services:
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
       OTEL_SERVICE_NAME: order-service
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       POSTGRES_CONNECTION_STRING: Host=postgres;Database=otelpoc;Username=poc;Password=poc
     ports:
       - "8080:8080"
     depends_on:
       otelcol:
         condition: service_started
-      kafka:
-        condition: service_healthy
       postgres:
+        condition: service_healthy
+      kafka-connect:
         condition: service_healthy
     networks:
       - otel-demo

@@ -1,0 +1,24 @@
+{
+  "name": "order-outbox-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "poc",
+    "database.password": "poc",
+    "database.dbname": "otelpoc",
+    "plugin.name": "pgoutput",
+    "publication.autocreate.mode": "filtered",
+    "table.include.list": "public.outbox_messages",
+    "topic.prefix": "dbz",
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+    "transforms.outbox.table.field.event.id": "id",
+    "transforms.outbox.table.field.event.key": "order_id",
+    "transforms.outbox.table.field.event.payload": "payload",
+    "transforms.outbox.route.by.field": "aggregate_type",
+    "transforms.outbox.route.topic.replacement": "orders",
+    "transforms.outbox.table.fields.additional.placement": "traceparent:header:traceparent,tracestate:header:tracestate",
+    "value.converter": "org.apache.kafka.connect.storage.StringConverter"
+  }
+}

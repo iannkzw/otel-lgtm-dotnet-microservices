@@ -5,8 +5,8 @@ Esta PoC demonstra um fluxo distribuído ponta a ponta com três serviços .NET,
 O caminho principal da demo é:
 
 1. `POST /orders` no `order-service`.
-2. Persistência inicial no PostgreSQL.
-3. Publicação no topic Kafka `orders`.
+2. Persistência atômica do pedido e da mensagem de outbox no PostgreSQL (mesma transação).
+3. O Debezium lê o WAL do Postgres e publica a mensagem no topic Kafka `orders` somente após o commit.
 4. Consumo no `processing-worker`, consulta HTTP ao `order-service` e publicação em `notifications`.
 5. Consumo no `notification-worker` e persistência final no PostgreSQL.
 6. Exportação de traces, métricas e logs para `otelcol` e visualização no Grafana, Tempo, Prometheus e Loki.
@@ -20,6 +20,7 @@ O caminho principal da demo é:
 | `notification-worker` | Consome `notifications` e persiste o resultado final | Rede interna Docker |
 | `postgres` | Banco compartilhado da PoC | Rede interna Docker |
 | `kafka` | Backbone de eventos entre os serviços | Rede interna Docker |
+| `kafka-connect` | Kafka Connect com Debezium — lê o WAL do Postgres e publica no Kafka via CDC | `http://localhost:8083` |
 | `kafka-ui` | Interface visual para tópicos, consumer groups e mensagens do Kafka | Host: `http://localhost:8085` |
 | `zookeeper` | Coordenação do Kafka | Rede interna Docker |
 | `otelcol` | Recebe OTLP e encaminha sinais para a stack LGTM | Host: `localhost:4317` e `localhost:4318` |
@@ -85,6 +86,7 @@ Use a tabela abaixo para evitar confundir URLs do host com endpoints internos do
 | OTLP gRPC | `localhost:4317` | `http://otelcol:4317` | Exportação dos serviços para o collector |
 | OTLP HTTP | `localhost:4318` | `http://otelcol:4318` | Exposto no host para inspeção e testes |
 | Kafka | não exposto | `kafka:9092` | Uso exclusivo entre containers |
+| Kafka Connect | `http://localhost:8083` | `http://kafka-connect:8083` | REST API do Debezium — diagnóstico e gestão do conector |
 | PostgreSQL | não exposto | `postgres` | Uso exclusivo entre containers |
 | Zookeeper | não exposto | `zookeeper:2181` | Uso exclusivo entre containers |
 | ProcessingWorker | não exposto | container interno | Sem endpoint HTTP publicado |
@@ -94,6 +96,27 @@ Use a tabela abaixo para evitar confundir URLs do host com endpoints internos do
 Ponto importante:
 
 - O `alert-webhook-mock` não está exposto no host. Para validar alertas, use logs do compose ou inspeção interna do container. Não tente abrir `http://localhost:8080/requests` para esse serviço.
+
+## Transaction Outbox com CDC + Debezium
+
+> **Nota**: extensão introduzida para explorar novas tecnologias na PoC — não é o foco central da demo.
+
+O `POST /orders` salva o pedido e uma linha em `outbox_messages` na **mesma transação**. O Debezium monitora o WAL do Postgres e publica no Kafka somente após o commit, eliminando a race condition estrutural da implementação original. O `traceparent` W3C é propagado como header Kafka via Outbox Event Router SMT.
+
+Arquivos relevantes: `tools/debezium/order-outbox-connector.json`, `tools/postgres/init.sql`.
+
+### Diagnóstico rápido
+
+```powershell
+# Estado do conector
+docker compose logs --no-color --tail=20 kafka-connect
+docker compose logs --no-color connector-init
+
+# Kafka Connect REST API
+Invoke-RestMethod http://localhost:8083/connectors/order-outbox-connector/status
+```
+
+---
 
 ## Fluxo Feliz da Demo
 
@@ -277,6 +300,17 @@ docker compose logs --no-color --tail=50 order-service
 
 O compose depende de health checks para Kafka e PostgreSQL antes de iniciar partes do fluxo.
 
+### Conector Debezium não iniciou ou está em FAILED
+
+O erro mais comum é `No table filters found for filtered publication`, que ocorre quando o Debezium tenta criar a publication antes da tabela `outbox_messages` existir (race condition de inicialização). O `tools/postgres/init.sql` pré-cria as tabelas para evitar isso, mas só é executado na **primeira inicialização de um volume novo**.
+
+Se o volume `postgres-data` já existia antes da adição do `init.sql`, registre o conector manualmente após o stack estar no ar:
+
+```powershell
+docker cp .\tools\debezium\order-outbox-connector.json otel-lgtm-dotnet-microservices-kafka-connect-1:/tmp/connector.json
+docker exec otel-lgtm-dotnet-microservices-kafka-connect-1 curl -sf -X POST http://localhost:8083/connectors -H "Content-Type: application/json" -d "@/tmp/connector.json"
+```
+
 ### Dashboard ou alertas não apareceram imediatamente
 
 O Grafana pode levar alguns instantes para provisionar dashboard e regras depois da subida inicial. Aguarde um pouco e, se necessário, confira:
@@ -295,6 +329,10 @@ Os passos deste README foram alinhados diretamente com os artefatos versionados 
 
 - `docker-compose.yaml`
 - `src/OrderService/Program.cs`
+- `src/OrderService/Data/OutboxMessage.cs`
+- `src/ProcessingWorker/Messaging/KafkaTracingHelper.cs`
+- `tools/debezium/order-outbox-connector.json`
+- `tools/postgres/init.sql`
 - `grafana/dashboards/otel-poc-overview.json`
 - `grafana/provisioning/alerting/otel-poc-alert-rules.yaml`
 - `grafana/provisioning/alerting/otel-poc-contact-points.yaml`

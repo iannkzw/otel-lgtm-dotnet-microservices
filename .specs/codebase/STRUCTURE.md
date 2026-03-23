@@ -46,7 +46,7 @@ otel-lgtm-dotnet-microservices/
 #### `src/OrderService/`
 
 - Serviço HTTP de entrada.
-- Contém API, entidade `Order`, DbContext, publisher Kafka, backlog metrics e Dockerfile.
+- Contém API, entidade `Order`, entidade `OutboxMessage`, DbContext e Dockerfile.
 
 #### `src/ProcessingWorker/`
 
@@ -81,7 +81,9 @@ otel-lgtm-dotnet-microservices/
 **Propósito:** utilitários operacionais para demonstração e validação.
 
 - `alert-webhook-mock/`: servidor Python que recebe alertas do Grafana e expõe `/health` e `/requests`.
+- `debezium/`: configuração do conector Debezium (`order-outbox-connector.json`).
 - `load-generator/`: script PowerShell para gerar carga contra o OrderService.
+- `postgres/`: scripts SQL de inicialização do banco (`init.sql`) montados via `docker-entrypoint-initdb.d`.
 
 ## Onde as Coisas Ficam
 
@@ -121,7 +123,7 @@ Os três projetos em `src/` seguem uma estrutura consistente:
 - `Dockerfile` para build e runtime
 - `Contracts/` para DTOs e eventos
 - `Extensions/` para extensão transversal
-- `Messaging/` para Kafka e trace propagation
+- `Messaging/` para Kafka e trace propagation *(apenas ProcessingWorker e NotificationWorker — o OrderService não possui esta pasta)*
 - `Metrics/` para medição operacional
 
 Áreas adicionais aparecem conforme a responsabilidade do serviço:

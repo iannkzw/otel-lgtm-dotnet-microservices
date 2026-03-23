@@ -13,8 +13,6 @@ public static class OrderCreateResults
     public const string Created = "created";
     public const string ValidationFailed = "validation_failed";
     public const string PersistFailed = "persist_failed";
-    public const string PublishFailed = "publish_failed";
-    public const string StatusUpdateFailed = "status_update_failed";
 }
 
 public sealed class OrderMetrics : IOrderMetrics
@@ -25,9 +23,7 @@ public sealed class OrderMetrics : IOrderMetrics
     [
         OrderCreateResults.Created,
         OrderCreateResults.ValidationFailed,
-        OrderCreateResults.PersistFailed,
-        OrderCreateResults.PublishFailed,
-        OrderCreateResults.StatusUpdateFailed
+        OrderCreateResults.PersistFailed
     ];
 
     private readonly Meter _meter = new(MeterName);

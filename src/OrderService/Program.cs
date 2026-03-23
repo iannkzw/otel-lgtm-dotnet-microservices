@@ -1,31 +1,20 @@
 using System.Diagnostics;
-using Confluent.Kafka;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using OrderService.Contracts;
 using OrderService.Data;
 using OrderService.Extensions;
 using OrderService.Metrics;
-using OrderService.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 var postgresConnectionString = builder.Configuration["POSTGRES_CONNECTION_STRING"]
     ?? throw new InvalidOperationException("POSTGRES_CONNECTION_STRING is required.");
-var kafkaBootstrapServers = builder.Configuration["KAFKA_BOOTSTRAP_SERVERS"]
-    ?? throw new InvalidOperationException("KAFKA_BOOTSTRAP_SERVERS is required.");
 
 builder.WebHost.UseUrls("http://0.0.0.0:8080");
 builder.Services.AddProblemDetails();
 builder.Services.AddOtelInstrumentation(builder.Configuration);
 builder.Services.AddDbContext<OrderDbContext>(options => options.UseNpgsql(postgresConnectionString));
-builder.Services.AddSingleton(_ =>
-    new ProducerBuilder<string, string>(new ProducerConfig
-    {
-        BootstrapServers = kafkaBootstrapServers,
-        MessageTimeoutMs = 5000,
-        SocketTimeoutMs = 5000
-    }).Build());
-builder.Services.AddSingleton<IKafkaOrderPublisher, KafkaOrderPublisher>();
 
 var app = builder.Build();
 
@@ -45,7 +34,6 @@ app.MapGet("/health", () => Results.Ok(new
 app.MapPost("/orders", async (
     CreateOrderRequest request,
     OrderDbContext dbContext,
-    IKafkaOrderPublisher publisher,
     IOrderMetrics metrics,
     ILogger<Program> logger,
     CancellationToken cancellationToken) =>
@@ -68,14 +56,32 @@ app.MapPost("/orders", async (
     {
         Id = Guid.NewGuid(),
         Description = request.Description.Trim(),
-        Status = OrderStatuses.PendingPublish,
+        Status = OrderStatuses.Published,
+        CreatedAtUtc = DateTimeOffset.UtcNow,
+        PublishedAtUtc = DateTimeOffset.UtcNow
+    };
+
+    var outboxMessage = new OutboxMessage
+    {
+        Id = Guid.NewGuid(),
+        OrderId = order.Id,
+        Payload = JsonSerializer.Serialize(
+            new OrderCreatedEvent(order.Id, order.Description, order.CreatedAtUtc)),
+        AggregateType = "Order",
+        EventType = "OrderCreated",
+        IdempotencyKey = order.Id.ToString(),
+        Traceparent = Activity.Current?.Id,
+        Tracestate = Activity.Current?.TraceStateString,
         CreatedAtUtc = DateTimeOffset.UtcNow
     };
 
     try
     {
+        await using var tx = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         dbContext.Orders.Add(order);
+        dbContext.OutboxMessages.Add(outboxMessage);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await tx.CommitAsync(cancellationToken);
     }
     catch (Exception ex)
     {
@@ -93,73 +99,6 @@ app.MapPost("/orders", async (
 
         return Results.Problem(
             title: "Failed to persist order.",
-            statusCode: StatusCodes.Status500InternalServerError);
-    }
-
-    try
-    {
-        await publisher.PublishAsync(
-            new OrderCreatedEvent(order.Id, order.Description, order.CreatedAtUtc),
-            cancellationToken);
-    }
-    catch (Exception ex)
-    {
-        result = OrderCreateResults.PublishFailed;
-        Activity.Current?.SetStatus(ActivityStatusCode.Error, ex.Message);
-
-        order.Status = OrderStatuses.PublishFailed;
-
-        try
-        {
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (Exception updateEx)
-        {
-            logger.LogError(
-                updateEx,
-                "Failed to persist publish_failed status for order {OrderId} {TraceId} {SpanId}",
-                order.Id,
-                Activity.Current?.TraceId.ToString(),
-                Activity.Current?.SpanId.ToString());
-        }
-
-        logger.LogError(
-            ex,
-            "Order publish failed {OrderId} {TraceId} {SpanId}",
-            order.Id,
-            Activity.Current?.TraceId.ToString(),
-            Activity.Current?.SpanId.ToString());
-
-        metrics.RecordCreateResult(result, stopwatch.Elapsed);
-
-        return Results.Problem(
-            title: "Failed to publish order event.",
-            statusCode: StatusCodes.Status503ServiceUnavailable);
-    }
-
-    order.Status = OrderStatuses.Published;
-    order.PublishedAtUtc = DateTimeOffset.UtcNow;
-
-    try
-    {
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
-    catch (Exception ex)
-    {
-        result = OrderCreateResults.StatusUpdateFailed;
-        Activity.Current?.SetStatus(ActivityStatusCode.Error, ex.Message);
-
-        logger.LogError(
-            ex,
-            "Order was published but status update failed {OrderId} {TraceId} {SpanId}",
-            order.Id,
-            Activity.Current?.TraceId.ToString(),
-            Activity.Current?.SpanId.ToString());
-
-        metrics.RecordCreateResult(result, stopwatch.Elapsed);
-
-        return Results.Problem(
-            title: "Order event was published but the persisted status could not be updated.",
             statusCode: StatusCodes.Status500InternalServerError);
     }
 
@@ -223,6 +162,24 @@ static async Task EnsureDatabaseSchemaAsync(WebApplication app)
 
             CREATE INDEX IF NOT EXISTS ix_orders_status
                 ON orders (status);
+
+            CREATE TABLE IF NOT EXISTS outbox_messages (
+                id uuid PRIMARY KEY,
+                order_id uuid NOT NULL,
+                payload text NOT NULL,
+                aggregate_type text NOT NULL DEFAULT 'Order',
+                event_type text NOT NULL DEFAULT 'OrderCreated',
+                idempotency_key text NOT NULL,
+                traceparent text NULL,
+                tracestate text NULL,
+                created_at_utc timestamp with time zone NOT NULL
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS uix_outbox_messages_idempotency_key
+                ON outbox_messages (idempotency_key);
+
+            CREATE INDEX IF NOT EXISTS ix_outbox_messages_created
+                ON outbox_messages (created_at_utc DESC);
             """);
         logger.LogInformation("Order database schema ensured successfully.");
     }
