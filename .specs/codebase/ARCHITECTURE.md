@@ -8,7 +8,13 @@
 Cliente HTTP
    |
    v
-OrderService (HTTP + EF Core + Kafka producer)
+OrderService (HTTP + EF Core + Outbox)
+   |
+   | BEGIN TX: INSERT orders + INSERT outbox_messages
+   v
+PostgreSQL (WAL logical replication)
+   |
+   | [Debezium / kafka-connect — CDC]
    |
    | topic: orders
    v
@@ -42,13 +48,12 @@ Grafana LGTM (Tempo + Loki + Prometheus + Grafana)
 
 **Localização:** `src/OrderService`
 
-**Responsabilidade:** receber `POST /orders`, validar payload, persistir a ordem, publicar um evento Kafka e expor `GET /orders/{id}` para enriquecimento posterior.
+**Responsabilidade:** receber `POST /orders`, validar payload, persistir a ordem e uma mensagem de outbox em transação atômica (sem publicar diretamente no Kafka), e expor `GET /orders/{id}` para enriquecimento posterior.
 
 **Elementos estruturais:**
 
-- `Program.cs` concentra o bootstrap da API, DbContext, producer Kafka e endpoints minimal API.
-- `Data/` modela a tabela `orders` e o mapeamento EF Core.
-- `Messaging/KafkaOrderPublisher.cs` publica `OrderCreatedEvent` com propagação de contexto W3C.
+- `Program.cs` concentra o bootstrap da API, DbContext e endpoints minimal API. Não há producer Kafka registrado.
+- `Data/` modela as tabelas `orders` e `outbox_messages` e seus mappings EF Core.
 - `Metrics/` expõe contadores, histograma de latência e gauge de backlog.
 
 ### ProcessingWorker
@@ -88,20 +93,19 @@ Grafana LGTM (Tempo + Loki + Prometheus + Grafana)
 ### Fluxo Feliz de Pedido
 
 1. O cliente chama `POST /orders` no OrderService.
-2. O OrderService valida `description`, cria uma entidade `Order` com status inicial `pending_publish` e persiste no PostgreSQL.
-3. O serviço publica `OrderCreatedEvent` no topic `orders` com chave igual ao `orderId`.
-4. O OrderService atualiza o pedido para status `published` e define `published_at_utc`.
-5. O ProcessingWorker consome a mensagem, extrai o contexto distribuído do Kafka e abre um span consumidor.
-6. O ProcessingWorker chama `GET /orders/{id}` no OrderService para enriquecer o fluxo com o estado persistido mais atual.
-7. Após validação, o ProcessingWorker publica `NotificationRequestedEvent` no topic `notifications`.
-8. O NotificationWorker consome a mensagem, valida o payload e persiste o resultado na tabela `notification_results`.
-9. Todo o fluxo exporta traces, métricas e logs para o collector e depois para LGTM.
+2. O OrderService valida `description`, abre uma transação e persiste a entidade `Order` (já com status `published` e `published_at_utc`) junto com uma linha na tabela `outbox_messages` — na mesma transação atômica.
+3. O Debezium (`kafka-connect`) detecta o INSERT em `outbox_messages` via WAL do PostgreSQL e publica `OrderCreatedEvent` no topic `orders`, propagando o `traceparent` como header Kafka via Outbox Event Router SMT.
+4. O ProcessingWorker consome a mensagem, extrai o contexto distribuído do Kafka e abre um span consumidor.
+5. O ProcessingWorker chama `GET /orders/{id}` no OrderService para enriquecer o fluxo com o estado persistido mais atual. O status já é `published` por design — a race condition da implementação anterior é impossível nesta arquitetura.
+6. Após validação, o ProcessingWorker publica `NotificationRequestedEvent` no topic `notifications`.
+7. O NotificationWorker consome a mensagem, valida o payload e persiste o resultado na tabela `notification_results`.
+8. Todo o fluxo exporta traces, métricas e logs para o collector e depois para LGTM.
 
 ### Fluxo de Falha no OrderService
 
-1. Falha ao persistir a ordem: a API registra erro, marca o span como erro, grava métricas com `persist_failed` e responde `500`.
-2. Falha ao publicar no Kafka: a API tenta atualizar a ordem para `publish_failed`, grava métricas com `publish_failed` e responde `503`.
-3. Falha ao atualizar status após publicação: o evento já foi emitido, mas o status persistido não é atualizado; a API retorna `500` e registra `status_update_failed`.
+1. Falha ao commitar a transação (INSERT `orders` ou `outbox_messages`): a API registra erro, marca o span como erro, grava métricas com `persist_failed` e responde `500`. Por ser uma transação atômica, falhas parciais entre pedido e outbox são impossíveis.
+
+Os cenários `publish_failed` e `status_update_failed` existentes na implementação anterior foram eliminados com a adoção do padrão Outbox.
 
 ### Fluxo de Falha nos Workers
 

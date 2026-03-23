@@ -30,10 +30,10 @@
 
 #### `orders`
 
-- **Producer:** OrderService
+- **Producer:** Debezium (`kafka-connect`) via CDC do WAL do PostgreSQL
 - **Consumer:** ProcessingWorker
 - **Chave:** `OrderId` como string
-- **Payload:** `OrderCreatedEvent`
+- **Payload:** `OrderCreatedEvent` (JSON puro, sem envelope de schema do Kafka Connect)
 
 #### `notifications`
 
@@ -62,12 +62,42 @@
 - schema mapeado por `OrderDbContext`;
 - colunas: `id`, `description`, `status`, `created_at_utc`, `published_at_utc`.
 
+### Tabela `outbox_messages`
+
+- usada pelo OrderService (escrita) e pelo Debezium (leitura via WAL);
+- schema mapeado por `OrderDbContext` e pré-criado por `tools/postgres/init.sql`;
+- colunas: `id`, `order_id`, `aggregate_type`, `event_type`, `payload`, `idempotency_key`, `traceparent`, `tracestate`, `created_at_utc`;
+- índice único em `idempotency_key`;
+- tabela append-only — não possui coluna de status.
+
 ### Tabela `notification_results`
 
 - usada pelo NotificationWorker;
 - schema mapeado por `NotificationDbContext` e reforçado por DDL explícito no startup;
 - colunas: `id`, `order_id`, `description`, `status`, `created_at_utc`, `published_at_utc`, `processed_at_utc`, `persisted_at_utc`, `trace_id`;
 - índices: `ix_notification_results_order_id`, `ix_notification_results_trace_id`.
+
+## Kafka Connect (Debezium)
+
+**Serviço:** `debezium/connect:2.4`
+
+**Porta host:** `localhost:8083`
+
+**Endpoint interno:** `http://kafka-connect:8083`
+
+### Conector registrado
+
+- **Nome:** `order-outbox-connector`
+- **Configuração:** `tools/debezium/order-outbox-connector.json`
+- **Tabela monitorada:** `public.outbox_messages` (via `pgoutput`, logical replication)
+- **Topic de saída:** `orders` (via Outbox Event Router SMT, roteado por `aggregate_type`)
+- **Propagação de contexto:** `traceparent` e `tracestate` publicados como headers Kafka
+- **Value converter:** `StringConverter` — garante payload JSON puro sem envelope de schema
+
+### Inicialização automática
+
+- O serviço `connector-init` (`curlimages/curl`) registra o conector via REST API no startup.
+- O `tools/postgres/init.sql` pré-cria as tabelas no PostgreSQL antes do Debezium iniciar (montado em `/docker-entrypoint-initdb.d/` — só executado em volumes novos).
 
 ## OpenTelemetry Collector
 

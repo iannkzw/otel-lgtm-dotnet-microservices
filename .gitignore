@@ -4,4 +4,4 @@ src/OrderService/bin
 src/OrderService/obj
 src/ProcessingWorker/bin
 src/ProcessingWorker/obj
-.specs/prompts/next-feature-prompt.txt
+.specs/prompts/

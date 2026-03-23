@@ -35,7 +35,8 @@ public static class KafkaTracingHelper
                 continue;
             }
 
-            return Encoding.ASCII.GetString(header.GetValueBytes());
+            var bytes = header.GetValueBytes();
+            return bytes is null ? null : Encoding.ASCII.GetString(bytes);
         }
 
         return null;

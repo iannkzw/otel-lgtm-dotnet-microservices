@@ -11,8 +11,8 @@
 ### Namespaces e Tipos
 
 - Namespaces seguem o padrão `<Servico>.<Area>`.
-- Classes públicas usam PascalCase: `KafkaOrderPublisher`, `OrderDbContext`, `NotificationLagRefresher`.
-- Interfaces usam prefixo `I`: `IKafkaOrderPublisher`, `IOrderServiceClient`, `INotificationMetrics`.
+- Classes públicas usam PascalCase: `KafkaNotificationPublisher`, `OrderDbContext`, `NotificationLagRefresher`.
+- Interfaces usam prefixo `I`: `IOrderServiceClient`, `INotificationMetrics`.
 - DTOs e eventos usam `sealed record` quando o tipo é imutável de transporte: `CreateOrderRequest`, `OrderCreatedEvent`, `NotificationRequestedEvent`.
 
 ### Campos, Constantes e Resultados
@@ -93,5 +93,5 @@
 
 ## Divergências Observadas
 
-- Há uma diferença de versão do `Confluent.Kafka`: `2.11.0` no OrderService e `2.5.0` nos workers.
+- `Confluent.Kafka` tem versões diferentes entre os workers: `2.5.0` no ProcessingWorker e no NotificationWorker.
 - Há dependências preview/beta de EF Core instrumentation e Npgsql, coerentes com o alvo `net10.0` atual da PoC.

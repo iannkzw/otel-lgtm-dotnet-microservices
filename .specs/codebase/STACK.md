@@ -13,7 +13,7 @@
 
 ## Serviços de Aplicação
 
-- **OrderService:** API HTTP de entrada para criação e consulta de pedidos
+- **OrderService:** API HTTP de entrada para criação e consulta de pedidos; publica via Outbox + CDC (sem producer Kafka direto)
 - **ProcessingWorker:** worker Kafka que enriquece pedidos chamando o OrderService e publica notificações
 - **NotificationWorker:** worker Kafka que persiste o resultado final no PostgreSQL
 
@@ -29,7 +29,6 @@
 
 ### OrderService
 
-- `Confluent.Kafka` 2.11.0
 - `Npgsql.EntityFrameworkCore.PostgreSQL` 10.0.0-preview.3
 - `OpenTelemetry.Extensions.Hosting` 1.12.0
 - `OpenTelemetry.Exporter.OpenTelemetryProtocol` 1.12.0
@@ -61,6 +60,7 @@
 - **Kafka:** `confluentinc/cp-kafka:7.5.0`
 - **Zookeeper:** `confluentinc/cp-zookeeper:7.5.0`
 - **PostgreSQL:** `postgres:16-alpine`
+- **Kafka Connect / Debezium:** `debezium/connect:2.4`
 - **Collector:** `otel/opentelemetry-collector-contrib:latest`
 - **Observability backend:** `grafana/otel-lgtm:latest`
 - **Geração sintética:** `ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest`
@@ -79,6 +79,7 @@
 - **HTTP host:** `localhost:8080` para o OrderService
 - **HTTP interno:** `http://order-service:8080/` usado pelo ProcessingWorker
 - **Kafka interno:** `kafka:9092`
+- **Kafka Connect host:** `localhost:8083`; interno: `http://kafka-connect:8083`
 - **PostgreSQL interno:** `postgres`
 - **OTLP gRPC:** `otelcol:4317` internamente, `localhost:4317` no host
 - **OTLP HTTP:** `otelcol:4318` internamente, `localhost:4318` no host
