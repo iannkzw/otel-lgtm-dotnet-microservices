@@ -38,6 +38,7 @@ public static class OtelExtensions
             .WithMetrics(builder => builder
                 .SetResourceBuilder(resourceBuilder)
                 .AddMeter(OrderMetrics.MeterName)
+                .SetExemplarFilter(ExemplarFilterType.AlwaysOn)
                 .AddOtlpExporter(options =>
                 {
                     options.Endpoint = new Uri(otlpEndpoint);

@@ -1,7 +1,7 @@
 # State
 
-**Last Updated:** 2026-03-21
-**Current Work:** M4 CONCLUÍDO — feature `exportacao-logs-otlp` implementada (T1 fix nullable bug + T2/T3/T4 AddOpenTelemetry logs nos 3 serviços). Build passou com 0 erros. Próxima feature sugerida: `exemplars-metricas-traces` (ver `.specs/next-feature-prompt.txt`).
+**Last Updated:** 2026-03-24
+**Current Work:** M5 CONCLUÍDO — feature `exemplars-metricas-traces` implementada (ExemplarFilter nos 3 serviços + provisioning Grafana + bind mount no lgtm). `otelcol.yaml` validado sem mudanças e `dotnet build otel-poc.sln` passou com SDK local 10.0.201. Próxima feature sugerida: `tail-sampling-poc` (ver `.specs/prompts/tail-sampling-poc-prompt.txt`).
 
 ---
 
