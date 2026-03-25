@@ -3,7 +3,7 @@ services:
   alert-webhook-mock:
     build:
       context: .
-      dockerfile: tools/alert-webhook-mock/Dockerfile
+      dockerfile: ops/alert-webhook-mock/Dockerfile
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -18,12 +18,12 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./grafana/provisioning/dashboards/otel-poc-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/otel-poc-dashboards.yaml:ro
-      - ./grafana/provisioning/datasources/otel-poc-datasource-exemplars.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/otel-poc-datasource-exemplars.yaml:ro
-      - ./grafana/dashboards/otel-poc-overview.json:/otel-lgtm/dashboards/otel-poc-overview.json:ro
-      - ./grafana/provisioning/alerting/otel-poc-alert-rules.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/otel-poc-alert-rules.yaml:ro
-      - ./grafana/provisioning/alerting/otel-poc-contact-points.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/otel-poc-contact-points.yaml:ro
-      - ./grafana/provisioning/alerting/otel-poc-notification-policies.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/otel-poc-notification-policies.yaml:ro
+      - ./infra/grafana/provisioning/dashboards/otel-poc-dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/otel-poc-dashboards.yaml:ro
+      - ./infra/grafana/provisioning/datasources/otel-poc-datasource-exemplars.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/otel-poc-datasource-exemplars.yaml:ro
+      - ./infra/grafana/dashboards/otel-poc-overview.json:/otel-lgtm/dashboards/otel-poc-overview.json:ro
+      - ./infra/grafana/provisioning/alerting/otel-poc-alert-rules.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/otel-poc-alert-rules.yaml:ro
+      - ./infra/grafana/provisioning/alerting/otel-poc-contact-points.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/otel-poc-contact-points.yaml:ro
+      - ./infra/grafana/provisioning/alerting/otel-poc-notification-policies.yaml:/otel-lgtm/grafana/conf/provisioning/alerting/otel-poc-notification-policies.yaml:ro
     networks:
       - otel-demo
   
@@ -35,8 +35,8 @@ services:
       - LOGS_URL=http://lgtm:4318/v1/logs
       - METRICS_URL=http://lgtm:4318/v1/metrics
     volumes:
-      - ./otelcol.yaml:/etc/otelcol/config.yaml:ro,z
-      - ./processors:/etc/otelcol/processors:ro,z
+      - ./infra/otel/otelcol.yaml:/etc/otelcol/config.yaml:ro,z
+      - ./infra/otel/processors:/etc/otelcol/processors:ro,z
     command: ["--config","/etc/otelcol/config.yaml"]
     working_dir: /etc/otelcol
     ports:
@@ -124,7 +124,7 @@ services:
       start_period: 5s
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./tools/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     networks:
       - otel-demo
 
@@ -158,7 +158,7 @@ services:
       kafka-connect:
         condition: service_healthy
     volumes:
-      - ./tools/debezium/order-outbox-connector.json:/connector.json:ro
+      - ./ops/debezium/order-outbox-connector.json:/connector.json:ro
     command: >
       sh -c "curl -sf -X POST http://kafka-connect:8083/connectors
       -H 'Content-Type: application/json'

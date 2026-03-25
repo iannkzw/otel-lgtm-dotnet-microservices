@@ -8,24 +8,28 @@ otel-lgtm-dotnet-microservices/
 │   ├── codebase/
 │   ├── features/
 │   └── project/
-├── grafana/
-│   ├── dashboards/
-│   └── provisioning/
-├── processors/
-│   └── sampling/
+├── infra/
+│   ├── grafana/
+│   │   ├── dashboards/
+│   │   └── provisioning/
+│   ├── otel/
+│   │   ├── otelcol.yaml
+│   │   └── processors/
+│   │       └── sampling/
+│   └── postgres/
 ├── src/
 │   ├── NotificationWorker/
 │   ├── OrderService/
 │   ├── ProcessingWorker/
 │   └── Shared/
-├── tools/
+├── ops/
 │   ├── alert-webhook-mock/
+│   ├── debezium/
 │   └── load-generator/
 ├── Directory.Build.props
 ├── docker-compose.yaml
 ├── global.json
 ├── otel-poc.sln
-├── otelcol.yaml
 └── README.md
 ```
 
@@ -62,28 +66,24 @@ otel-lgtm-dotnet-microservices/
 
 - Código compartilhado de propagação W3C de trace context.
 
-### `grafana/`
+### `infra/`
 
-**Propósito:** provisionamento versionado de operação.
+**Propósito:** artefatos de infraestrutura e observabilidade versionados.
 
-- `dashboards/otel-poc-overview.json`: dashboard da PoC.
-- `provisioning/dashboards/`: configuração do provisioning do dashboard.
-- `provisioning/alerting/`: regras, contact points e policy tree de alertas.
+- `infra/grafana/dashboards/otel-poc-overview.json`: dashboard da PoC.
+- `infra/grafana/provisioning/dashboards/`: configuração do provisioning do dashboard.
+- `infra/grafana/provisioning/alerting/`: regras, contact points e policy tree de alertas.
+- `infra/otel/otelcol.yaml`: configuração principal do collector.
+- `infra/otel/processors/sampling/`: políticas modulares de tail sampling.
+- `infra/postgres/init.sql`: bootstrap SQL para volumes novos do PostgreSQL.
 
-### `processors/`
-
-**Propósito:** modularizar políticas do collector.
-
-- `sampling/`: políticas de tail sampling consumidas por `otelcol.yaml`.
-
-### `tools/`
+### `ops/`
 
 **Propósito:** utilitários operacionais para demonstração e validação.
 
 - `alert-webhook-mock/`: servidor Python que recebe alertas do Grafana e expõe `/health` e `/requests`.
 - `debezium/`: configuração do conector Debezium (`order-outbox-connector.json`).
 - `load-generator/`: script PowerShell para gerar carga contra o OrderService.
-- `postgres/`: scripts SQL de inicialização do banco (`init.sql`) montados via `docker-entrypoint-initdb.d`.
 
 ## Onde as Coisas Ficam
 
@@ -103,9 +103,9 @@ otel-lgtm-dotnet-microservices/
 ### Observabilidade
 
 - Bootstrap OpenTelemetry por serviço: `src/*/Extensions/OtelExtensions.cs`
-- Collector: `otelcol.yaml`
-- Sampling: `processors/sampling/`
-- Dashboards e alertas: `grafana/`
+- Collector: `infra/otel/otelcol.yaml`
+- Sampling: `infra/otel/processors/sampling/`
+- Dashboards e alertas: `infra/grafana/`
 
 ### Infraestrutura Local
 

@@ -4,7 +4,7 @@
 
 **For:** Engenheiros de plataforma e desenvolvedores backend validando a adoção de observabilidade com OpenTelemetry em arquiteturas orientadas a eventos.
 
-**Solves:** Demonstrar de forma concreta como instrumentar microsserviços .NET com OpenTelemetry — incluindo propagação de contexto entre serviços HTTP e Kafka, instrumentação de banco de dados, e configuração de alertas — usando a infraestrutura do `otel-demo-main` como collector e backend.
+**Solves:** Demonstrar de forma concreta como instrumentar microsserviços .NET com OpenTelemetry — incluindo propagação de contexto entre serviços HTTP e Kafka, instrumentação de banco de dados e configuração de alertas — usando um compose unificado e artefatos versionados de infraestrutura no próprio repositório.
 
 ---
 
@@ -39,7 +39,16 @@
 - `Npgsql.EntityFrameworkCore.PostgreSQL`
 
 **Infraestrutura:**
-- Docker Compose (estendendo o `otel-demo-main`)
+- Docker Compose unificado na raiz do repositório
+
+---
+
+## Decisões de Design do Repositório
+
+- O código de aplicação permanece em `src/` nesta fase para evitar churn em `.sln`, `.csproj` e Dockerfiles.
+- Infraestrutura versionada fica concentrada em `infra/`, incluindo Grafana, OTel Collector, processors e bootstrap SQL do PostgreSQL.
+- Utilitários operacionais ficam concentrados em `ops/`, incluindo webhook mock, configuração do Debezium e gerador de carga.
+- A raiz do repositório deve permanecer enxuta, mantendo como ponto de entrada apenas os artefatos principais de bootstrap e solução.
 
 ---
 
@@ -82,7 +91,7 @@
 - Propagação de trace context entre HTTP e Kafka (manual via headers)
 - Dashboard Grafana básico: RED metrics por serviço + Kafka lag
 - 1 alerta Grafana: latência P95 do OrderService acima de 500ms
-- Docker Compose unificado estendendo o `otel-demo-main`
+- Docker Compose unificado como ponto único de bootstrap local
 
 **Explicitamente fora do escopo:**
 - Autenticação/autorização
@@ -97,7 +106,7 @@
 
 ## Constraints
 
-- **Técnico:** Reutilizar a infraestrutura existente do `otel-demo-main` (OTel Collector + LGTM) como backend de observabilidade
+- **Técnico:** Preservar o compose unificado como ponto único de bootstrap e separar claramente aplicação (`src/`), infraestrutura (`infra/`) e operações (`ops/`)
 - **Escopo:** Cada serviço deve ter o mínimo de lógica de negócio necessário — o foco é a instrumentação, não a aplicação
 - **Runtime:** .NET 10 Preview / RC (mais recente disponível na data)
 - **Serviços de infra:** Kafka + Zookeeper + PostgreSQL adicionados ao Docker Compose

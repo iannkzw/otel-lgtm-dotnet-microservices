@@ -1,7 +1,7 @@
 # Roadmap
 
 **Current Milestone:** M4 — Hardening e Documentação da PoC
-**Status:** In Progress
+**Status:** Completed
 
 ---
 
@@ -125,7 +125,7 @@ Status atual: a feature `dashboard-grafana` foi implementada e validada com prov
 - Alerta 2: `ProcessingWorker` consumer lag > 100 mensagens
 - Configurar contact point local (log/webhook mock ou equivalente simples) no Grafana
 
-Status atual: a feature `alertas-grafana` foi implementada com artefatos versionados em `grafana/provisioning/alerting`, mounts read-only no `lgtm` para `/otel-lgtm/grafana/conf/provisioning/alerting`, contact point local via `alert-webhook-mock` e policy minima unica apontando para ele. A validacao confirmou o datasource nativo em `/otel-lgtm/grafana/conf/provisioning/datasources/grafana-datasources.yaml` com `uid: prometheus`, o auto-provisionamento por arquivo das duas regras obrigatorias e os caminhos reais do runtime Grafana 12.4.1. O alerta `ProcessingWorker lag > 100` foi validado ponta a ponta em `Pending`, `Firing` e `Resolved` com payloads recebidos no receiver local, enquanto o alerta `OrderService P95 > 500 ms` foi validado por runtime real com requests acima de 500 ms, regra em `Firing` e payload correspondente no webhook mock, sem reabrir escopo de metricas, collector, pipelines OTLP ou servicos .NET. Com isso, M3 fica fechado e o proximo passo natural e especificar a feature `README da PoC` de M4.
+Status atual: a feature `alertas-grafana` foi implementada com artefatos versionados em `infra/grafana/provisioning/alerting`, mounts read-only no `lgtm` para `/otel-lgtm/grafana/conf/provisioning/alerting`, contact point local via `ops/alert-webhook-mock` e policy minima unica apontando para ele. A validacao confirmou o datasource nativo em `/otel-lgtm/grafana/conf/provisioning/datasources/grafana-datasources.yaml` com `uid: prometheus`, o auto-provisionamento por arquivo das duas regras obrigatorias e os caminhos reais do runtime Grafana 12.4.1. O alerta `ProcessingWorker lag > 100` foi validado ponta a ponta em `Pending`, `Firing` e `Resolved` com payloads recebidos no receiver local, enquanto o alerta `OrderService P95 > 500 ms` foi validado por runtime real com requests acima de 500 ms, regra em `Firing` e payload correspondente no webhook mock, sem reabrir escopo de metricas, collector, pipelines OTLP ou servicos .NET. Com isso, M3 fica fechado e o proximo passo natural e especificar a feature `README da PoC` de M4.
 
 ---
 
@@ -145,7 +145,7 @@ Status atual: a feature `alertas-grafana` foi implementada com artefatos version
 - Matriz Host versus Rede Interna para clareza topológica
 - Troubleshooting e artefatos de referência da baseline
 
-Status atual: `README.md` foi criado com todas as seções obrigatórias, alinhado contra os artefatos versionados da baseline (`docker-compose.yaml`, `src/OrderService/Program.cs`, `grafana/dashboards/otel-poc-overview.json`, `grafana/provisioning/alerting/otel-poc-alert-rules.yaml`, `grafana/provisioning/alerting/otel-poc-contact-points.yaml`, `grafana/provisioning/alerting/otel-poc-notification-policies.yaml`, `tools/alert-webhook-mock/server.py`). Validação passou: dashboard UID `otel-poc-m3-overview` confirmado, alertas "OrderService P95 > 500 ms" e "ProcessingWorker lag > 100" presentes, endpoints `/orders`, `/orders/{id}` e `/health` documentados corretamente, matriz de rede completa e precisa.
+Status atual: `README.md` foi criado com todas as seções obrigatórias, alinhado contra os artefatos versionados da baseline (`docker-compose.yaml`, `src/OrderService/Program.cs`, `infra/grafana/dashboards/otel-poc-overview.json`, `infra/grafana/provisioning/alerting/otel-poc-alert-rules.yaml`, `infra/grafana/provisioning/alerting/otel-poc-contact-points.yaml`, `infra/grafana/provisioning/alerting/otel-poc-notification-policies.yaml`, `ops/alert-webhook-mock/server.py`). Validação passou: dashboard UID `otel-poc-m3-overview` confirmado, alertas "OrderService P95 > 500 ms" e "ProcessingWorker lag > 100" presentes, endpoints `/orders`, `/orders/{id}` e `/health` documentados corretamente, matriz de rede completa e precisa.
 
 **Gerador de Carga** — DONE
 
@@ -153,7 +153,7 @@ Status atual: `README.md` foi criado com todas as seções obrigatórias, alinha
 - Cobrir um modo de fluxo feliz para popular traces, metricas, logs e dashboard sem alterar a aplicacao
 - Cobrir um modo opcional de pressao de latencia para apoiar a demonstracao do alerta existente do `OrderService`
 
-Status atual: feature `gerador-de-carga` foi implementada em `tools/load-generator/generate-orders.ps1` com spec, design e tasks concluídos. Script PowerShell host-side com validação de parâmetros, payload builder com descrições únicas, executor HTTP único contra `POST /orders`, modo happy para fluxo sequencial, modo latency para concorrência controlada, resumo consolidado com estatísticas de latência e exit codes semânticos. Validação passou com smoke tests: modo happy com 20 pedidos, modo latency com 10 pedidos e concorrência 2, validação de parâmetros inválidos com exit code 1, sucesso com exit code 0. README atualizado com referência minima ao gerador como helper externo de demonstração. Nenhuma alteração em `src/`, `docker-compose.yaml`, `otelcol.yaml`, `processors/` ou `grafana/`.
+Status atual: feature `gerador-de-carga` foi implementada em `ops/load-generator/generate-orders.ps1` com spec, design e tasks concluídos. Script PowerShell host-side com validação de parâmetros, payload builder com descrições únicas, executor HTTP único contra `POST /orders`, modo happy para fluxo sequencial, modo latency para concorrência controlada, resumo consolidado com estatísticas de latência e exit codes semânticos. Validação passou com smoke tests: modo happy com 20 pedidos, modo latency com 10 pedidos e concorrência 2, validação de parâmetros inválidos com exit code 1, sucesso com exit code 0. README atualizado com referência minima ao gerador como helper externo de demonstração. Nenhuma alteração em `src/`, `docker-compose.yaml`, `infra/otel/otelcol.yaml`, `infra/otel/processors/` ou `infra/grafana/`.
 - Complementar o `README.md` canonico sem criar um segundo roteiro de demo e sem exigir mudancas em compose, collector ou servicos .NET
 
 Status atual: a feature foi especificada como o proximo passo de M4 com foco em utilitario minimo de demonstracao, reaproveitando o compose da raiz, o endpoint real do `OrderService` e os alertas Grafana ja provisionados.
@@ -164,7 +164,17 @@ Status atual: a feature foi especificada como o proximo passo de M4 com foco em 
 - Garantir que logs estruturados dos 3 serviços chegam ao OTel Collector e ao Loki, com campos `TraceId`, `SpanId` e `service_name`
 - Corrigir o crash `InvalidOperationException: Nullable object must have a value` no `ProcessingWorker/Worker.cs` causado por pedidos com status `pending_publish` atingindo a linha `order.PublishedAtUtc!.Value` sem guarda de status
 - Nenhum novo pacote NuGet necessário — `OpenTelemetry.Extensions.Hosting` já inclui suporte a logs via `services.AddLogging`
-- `otelcol.yaml` já possui pipeline `logs` funcional apontando para Loki — nenhuma alteração necessária no collector
+- `infra/otel/otelcol.yaml` já possui pipeline `logs` funcional apontando para Loki — nenhuma alteração necessária no collector
+
+**Refactor do Design do Repositório** — DONE
+
+- Reorganizar a estrutura para separar aplicação, infraestrutura observável e utilitários operacionais
+- Manter `docker-compose.yaml`, `otel-poc.sln`, `Directory.Build.props`, `global.json` e `README.md` na raiz
+- Mover Grafana, collector, processors e bootstrap SQL para `infra/`
+- Mover webhook mock, Debezium e gerador de carga para `ops/`
+- Atualizar compose, README e brownfield docs para a nova árvore
+
+Status atual: o refactor conservador do design do repositório foi concluído sem mover `src/`. A nova baseline mantém código de aplicação em `src/`, infraestrutura em `infra/` e utilitários operacionais em `ops/`, reduzindo poluição da raiz e preservando o bootstrap pelo `docker-compose.yaml`. As referências de caminhos foram atualizadas no compose, no `README.md` e nos brownfield docs de `.specs/codebase`, sem reabrir escopo de `.sln`, `.csproj` ou Dockerfiles dos serviços.
 
 Status atual: T1 (fix `HandleLookupOutcome` com guarda `!= "published"` antes do acesso a `PublishedAtUtc`) e T2/T3/T4 (`services.AddLogging(logging => logging.AddOpenTelemetry(...))` nos 3 `OtelExtensions.cs` com `IncludeFormattedMessage = true` e `IncludeScopes = true`) implementados. Build da solution em container SDK 10 passou com 0 erros e 0 warnings.
 

@@ -65,7 +65,7 @@
 ### Tabela `outbox_messages`
 
 - usada pelo OrderService (escrita) e pelo Debezium (leitura via WAL);
-- schema mapeado por `OrderDbContext` e pré-criado por `tools/postgres/init.sql`;
+- schema mapeado por `OrderDbContext` e pré-criado por `infra/postgres/init.sql`;
 - colunas: `id`, `order_id`, `aggregate_type`, `event_type`, `payload`, `idempotency_key`, `traceparent`, `tracestate`, `created_at_utc`;
 - índice único em `idempotency_key`;
 - tabela append-only — não possui coluna de status.
@@ -88,7 +88,7 @@
 ### Conector registrado
 
 - **Nome:** `order-outbox-connector`
-- **Configuração:** `tools/debezium/order-outbox-connector.json`
+- **Configuração:** `ops/debezium/order-outbox-connector.json`
 - **Tabela monitorada:** `public.outbox_messages` (via `pgoutput`, logical replication)
 - **Topic de saída:** `orders` (via Outbox Event Router SMT, roteado por `aggregate_type`)
 - **Propagação de contexto:** `traceparent` e `tracestate` publicados como headers Kafka
@@ -97,7 +97,7 @@
 ### Inicialização automática
 
 - O serviço `connector-init` (`curlimages/curl`) registra o conector via REST API no startup.
-- O `tools/postgres/init.sql` pré-cria as tabelas no PostgreSQL antes do Debezium iniciar (montado em `/docker-entrypoint-initdb.d/` — só executado em volumes novos).
+- O `infra/postgres/init.sql` pré-cria as tabelas no PostgreSQL antes do Debezium iniciar (montado em `/docker-entrypoint-initdb.d/` — só executado em volumes novos).
 
 ## OpenTelemetry Collector
 
@@ -122,7 +122,7 @@
 - `span`
 - `batch`
 
-As policies de sampling ficam em `processors/sampling/` e são carregadas modularmente.
+As policies de sampling ficam em `infra/otel/processors/sampling/` e são carregadas modularmente.
 
 ## Grafana LGTM
 
@@ -139,15 +139,15 @@ As policies de sampling ficam em `processors/sampling/` e são carregadas modula
 
 ### Provisioning Versionado
 
-- dashboard: `grafana/dashboards/otel-poc-overview.json`
-- dashboards provisioning: `grafana/provisioning/dashboards/otel-poc-dashboards.yaml`
-- alert rules: `grafana/provisioning/alerting/otel-poc-alert-rules.yaml`
-- contact points: `grafana/provisioning/alerting/otel-poc-contact-points.yaml`
-- notification policies: `grafana/provisioning/alerting/otel-poc-notification-policies.yaml`
+- dashboard: `infra/grafana/dashboards/otel-poc-overview.json`
+- dashboards provisioning: `infra/grafana/provisioning/dashboards/otel-poc-dashboards.yaml`
+- alert rules: `infra/grafana/provisioning/alerting/otel-poc-alert-rules.yaml`
+- contact points: `infra/grafana/provisioning/alerting/otel-poc-contact-points.yaml`
+- notification policies: `infra/grafana/provisioning/alerting/otel-poc-notification-policies.yaml`
 
 ## Alert Webhook Mock
 
-**Localização:** `tools/alert-webhook-mock`
+**Localização:** `ops/alert-webhook-mock`
 
 **Tecnologia:** Python `http.server`
 
@@ -163,7 +163,7 @@ As policies de sampling ficam em `processors/sampling/` e são carregadas modula
 
 ## Geração de Carga
 
-**Localização:** `tools/load-generator/generate-orders.ps1`
+**Localização:** `ops/load-generator/generate-orders.ps1`
 
 **Integração externa efetiva:** chamadas HTTP ao OrderService a partir do host.
 
