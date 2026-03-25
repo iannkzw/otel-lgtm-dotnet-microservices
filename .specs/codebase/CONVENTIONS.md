@@ -6,7 +6,8 @@
 
 - Serviços usam nomes em PascalCase: `OrderService`, `ProcessingWorker`, `NotificationWorker`.
 - Diretórios internos seguem responsabilidade técnica: `Contracts`, `Data`, `Extensions`, `Messaging`, `Metrics`, `Clients`.
-- Arquivos de configuração e infraestrutura usam kebab-case ou nomes consagrados do ecossistema: `docker-compose.yaml`, `otelcol.yaml`, `drop-health-checks.yaml`.
+- Infraestrutura operacional fica separada por domínio em `infra/` e `ops/`, enquanto o código de aplicação permanece em `src/`.
+- Arquivos de configuração e infraestrutura usam kebab-case ou nomes consagrados do ecossistema: `docker-compose.yaml`, `infra/otel/otelcol.yaml`, `drop-health-checks.yaml`.
 
 ### Namespaces e Tipos
 

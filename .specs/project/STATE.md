@@ -1,11 +1,18 @@
 # State
 
 **Last Updated:** 2026-03-24
-**Current Work:** M5 CONCLUÍDO — feature `exemplars-metricas-traces` implementada (ExemplarFilter nos 3 serviços + provisioning Grafana + bind mount no lgtm). `otelcol.yaml` validado sem mudanças e `dotnet build otel-poc.sln` passou com SDK local 10.0.201. Próxima feature sugerida: `tail-sampling-poc` (ver `.specs/prompts/tail-sampling-poc-prompt.txt`).
+**Current Work:** Refactor conservador do design do repositório concluído. A baseline agora separa aplicação em `src/`, infraestrutura em `infra/` e utilitários operacionais em `ops/`, com compose unificado preservado na raiz. Próximo passo sugerido: validar o stack completo pós-migração e, em seguida, retomar a trilha funcional planejada.
 
 ---
 
 ## Recent Decisions
+
+### AD-054: Reorganizar o design do repositório em camadas `src/`, `infra/` e `ops` sem mover os projetos .NET nesta etapa (2026-03-24)
+
+**Decision:** O design do repositório deve separar claramente código de aplicação em `src/`, infraestrutura versionada em `infra/` e utilitários operacionais em `ops/`, mantendo `docker-compose.yaml`, `otel-poc.sln`, `Directory.Build.props`, `global.json` e `README.md` na raiz e adiando explicitamente qualquer migração de `src/` para outra pasta.
+**Reason:** A raiz do repositório havia acumulado artefatos de infraestrutura e operação demais, o que aumentava ruído cognitivo e acoplamento de paths. A separação por domínio reduz poluição da raiz sem reabrir risco alto em `.sln`, `.csproj` e Dockerfiles.
+**Trade-off:** A fase atual preserva um compromisso estrutural temporário: a aplicação continua em `src/` enquanto infra e ops já foram reorganizados. Isso evita quebra imediata, mas deixa uma segunda onda de refactor pendente caso o time queira renomear `src/` no futuro.
+**Impact:** Compose, README e brownfield docs passam a referenciar `infra/grafana`, `infra/otel`, `infra/postgres`, `ops/alert-webhook-mock`, `ops/debezium` e `ops/load-generator`. Qualquer documentação nova deve seguir essa convenção.
 
 ### AD-053: Logs OTel adicionados via `services.AddLogging` reutilizando recursos já existentes do OtelExtensions (2026-03-19)
 
@@ -16,14 +23,14 @@
 
 ### AD-052: Implementacao do gerador de carga fica restrita ao script host-side e ao README minimo (2026-03-19)
 
-**Decision:** A fase de tasks da feature `gerador-de-carga` deve preparar a implementacao futura em nove passos atomicos, com diff funcional restrito a `tools/load-generator/generate-orders.ps1` e a uma referencia curta no `README.md`.
+**Decision:** A fase de tasks da feature `gerador-de-carga` deve preparar a implementacao futura em nove passos atomicos, com diff funcional restrito a `ops/load-generator/generate-orders.ps1` e a uma referencia curta no `README.md`.
 **Reason:** O principal risco desta etapa e reabrir a baseline validada da PoC para acomodar um helper de demonstracao que precisa permanecer pequeno, externo e facilmente revisavel.
 **Trade-off:** O gerador continua propositalmente enxuto e sem abstrair cenarios avancados, mas ganha clareza de escopo, verificacoes objetivas e pronta execucao na proxima iteracao.
 **Impact:** A proxima iteracao deve implementar apenas entrypoint, validacao de parametros, payload real com `description`, modos `happy` e `latency`, resumo final e referencia minima no `README.md`, sem mudancas em `src/`, compose, collector, processors ou Grafana.
 
-### AD-051: O MVP do gerador deve caber em um unico script PowerShell em `tools/load-generator/` (2026-03-19)
+### AD-051: O MVP do gerador deve caber em um unico script PowerShell em `ops/load-generator/` (2026-03-19)
 
-**Decision:** O design da feature `gerador-de-carga` deve concentrar o utilitario em um unico entrypoint `tools/load-generator/generate-orders.ps1`, com funcoes internas para payload, execucao e resumo, sem modulo separado, sem container dedicado e sem configuracao externa.
+**Decision:** O design da feature `gerador-de-carga` deve concentrar o utilitario em um unico entrypoint `ops/load-generator/generate-orders.ps1`, com funcoes internas para payload, execucao e resumo, sem modulo separado, sem container dedicado e sem configuracao externa.
 **Reason:** A feature precisa permanecer pequena, facil de versionar e aderente ao papel de helper de demonstracao. Espalhar o MVP em multiplos artefatos aumentaria manutencao sem ganho proporcional.
 **Trade-off:** O script concentra mais responsabilidade interna em um unico arquivo, mas essa compactacao e aceitavel porque o dominio do utilitario e curto e bem delimitado.
 **Impact:** A proxima etapa de tasks deve quebrar trabalho dentro do mesmo arquivo e tratar qualquer expansao estrutural como opcional, nao como requisito do MVP.
@@ -54,7 +61,7 @@
 **Decision:** A etapa de tasks da feature `readme-poc` deve preparar a implementacao do README como uma mudanca concentrada em `README.md`, com tarefas separadas para bootstrap, matriz host versus rede interna, fluxo feliz, traces, metricas, logs, alertas e troubleshooting.
 **Reason:** O principal risco desta feature e transformar uma mudanca puramente documental em churn desnecessario sobre compose, alertas ou codigo de aplicacao. Fixar a fronteira em `README.md` mantem a implementacao pequena, verificavel e fiel ao milestone M4.
 **Trade-off:** A iteracao de implementacao fica totalmente dependente da qualidade dos artefatos versionados ja existentes; qualquer lacuna funcional descoberta nessa fase precisara ser tratada fora desta feature documental.
-**Impact:** O proximo passo passa a ser editar somente `README.md`, conferindo cada secao diretamente com `docker-compose.yaml`, `src/OrderService/Program.cs`, `grafana/dashboards/otel-poc-overview.json`, `grafana/provisioning/alerting/` e `tools/alert-webhook-mock/server.py`.
+**Impact:** O proximo passo passa a ser editar somente `README.md`, conferindo cada secao diretamente com `docker-compose.yaml`, `src/OrderService/Program.cs`, `infra/grafana/dashboards/otel-poc-overview.json`, `infra/grafana/provisioning/alerting/` e `ops/alert-webhook-mock/server.py`.
 
 ### AD-046: README final da PoC deve ser guiado por ordem fixa, comandos reproduziveis e matriz host versus rede interna (2026-03-19)
 
@@ -77,7 +84,7 @@
 **Decision:** Montar o JSON versionado da PoC em `/otel-lgtm/dashboards/otel-poc-overview.json` por bind mount read-only, mesmo que o diretório `/otel-lgtm/dashboards` não exista previamente na imagem base.
 **Reason:** O provider isolado da PoC precisa apontar para um caminho separado dos dashboards nativos da imagem e a inspeção de runtime mostrou que o provisioning real fica em `/otel-lgtm/grafana/conf/provisioning`, enquanto os dashboards da PoC não devem sobrescrever `grafana-dashboards.yaml` nem os assets embarcados.
 **Trade-off:** A solução depende do comportamento padrão do Docker de materializar o caminho-alvo do bind mount no container, então a validação da feature precisa confirmar explicitamente a presença do arquivo montado após o restart do `lgtm`.
-**Impact:** O diff funcional permaneceu restrito ao `docker-compose.yaml` e aos artefatos versionados em `grafana/`, sem tocar collector, processors, datasource nativo ou serviços .NET.
+**Impact:** O diff funcional permaneceu restrito ao `docker-compose.yaml` e aos artefatos versionados hoje em `infra/grafana/`, sem tocar collector, processors, datasource nativo ou serviços .NET.
 
 ### AD-001: Reutilizar otel-demo-main como backend de observabilidade (2026-03-19)
 

@@ -124,7 +124,7 @@ Os cenários `publish_failed` e `status_update_failed` existentes na implementa�
 
 ### Pipeline do Collector
 
-**Localização:** `otelcol.yaml`
+**Localização:** `infra/otel/otelcol.yaml`
 
 - Recebe OTLP gRPC e HTTP.
 - Faz scrape das métricas internas do próprio collector via Prometheus.
@@ -133,7 +133,7 @@ Os cenários `publish_failed` e `status_update_failed` existentes na implementa�
 
 ### Estratégia de Sampling
 
-**Localização:** `processors/sampling`
+**Localização:** `infra/otel/processors/sampling`
 
 - `drop-health-checks.yaml` reduz o ruído de health checks bem-sucedidos.
 - `keep-errors.yaml` preserva traces com erro.

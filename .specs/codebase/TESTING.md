@@ -29,7 +29,7 @@ O roteiro principal do `README.md` valida o caminho ponta a ponta:
 
 ### 3. Geração de Carga Versionada
 
-**Arquivo:** `tools/load-generator/generate-orders.ps1`
+**Arquivo:** `ops/load-generator/generate-orders.ps1`
 
 O script suporta dois modos:
 

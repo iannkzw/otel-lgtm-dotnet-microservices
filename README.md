@@ -48,8 +48,6 @@ Suba todo o ambiente com build das imagens locais:
 docker compose up -d --build
 ```
 
-Verifique o estado inicial dos containers:
-
 ```powershell
 docker compose ps
 ```
@@ -95,15 +93,13 @@ Use a tabela abaixo para evitar confundir URLs do host com endpoints internos do
 
 Ponto importante:
 
-- O `alert-webhook-mock` não está exposto no host. Para validar alertas, use logs do compose ou inspeção interna do container. Não tente abrir `http://localhost:8080/requests` para esse serviço.
-
 ## Transaction Outbox com CDC + Debezium
 
 > **Nota**: extensão introduzida para explorar novas tecnologias na PoC — não é o foco central da demo.
 
 O `POST /orders` salva o pedido e uma linha em `outbox_messages` na **mesma transação**. O Debezium monitora o WAL do Postgres e publica no Kafka somente após o commit, eliminando a race condition estrutural da implementação original. O `traceparent` W3C é propagado como header Kafka via Outbox Event Router SMT.
 
-Arquivos relevantes: `tools/debezium/order-outbox-connector.json`, `tools/postgres/init.sql`.
+Arquivos relevantes: `ops/debezium/order-outbox-connector.json`, `infra/postgres/init.sql`.
 
 ### Diagnóstico rápido
 
@@ -123,11 +119,6 @@ Invoke-RestMethod http://localhost:8083/connectors/order-outbox-connector/status
 Crie um pedido pelo host com PowerShell e capture o `orderId` retornado:
 
 ```powershell
-$payload = @{ description = "demo-" + [guid]::NewGuid().ToString() } | ConvertTo-Json -Compress
-$order = Invoke-RestMethod -Uri http://localhost:8080/orders -Method POST -ContentType 'application/json' -Body $payload
-$orderId = $order.orderId
-$orderId
-```
 
 Opcionalmente, consulte o estado persistido do pedido:
 
@@ -175,7 +166,7 @@ docker compose ps kafka-ui
 Para popular a PoC com múltiplos pedidos de forma consistente e reproduzível, use o gerador de carga versionado:
 
 ```powershell
-powershell -File .\tools\load-generator\generate-orders.ps1 -Count 20
+powershell -File .\ops\load-generator\generate-orders.ps1 -Count 20
 ```
 
 Esse comando envia 20 pedidos reais contra `POST /orders` de forma sequencial (modo feliz). Os sinais resultantes (traces, métricas, logs) alimentam o dashboard e os alertas já provisionados na baseline.
@@ -183,7 +174,7 @@ Esse comando envia 20 pedidos reais contra `POST /orders` de forma sequencial (m
 Modo opcional de pressão de latência para demonstrar o alerta `OrderService P95 > 500 ms`:
 
 ```powershell
-powershell -File .\tools\load-generator\generate-orders.ps1 -Count 120 -Mode latency -Concurrency 6
+powershell -File .\ops\load-generator\generate-orders.ps1 -Count 120 -Mode latency -Concurrency 6
 ```
 
 O gerador é um utilitário externo de demonstração, não um componente funcional da PoC. O caminho principal da demo continua sendo este README como roteiro canônico.
@@ -302,12 +293,12 @@ O compose depende de health checks para Kafka e PostgreSQL antes de iniciar part
 
 ### Conector Debezium não iniciou ou está em FAILED
 
-O erro mais comum é `No table filters found for filtered publication`, que ocorre quando o Debezium tenta criar a publication antes da tabela `outbox_messages` existir (race condition de inicialização). O `tools/postgres/init.sql` pré-cria as tabelas para evitar isso, mas só é executado na **primeira inicialização de um volume novo**.
+O erro mais comum é `No table filters found for filtered publication`, que ocorre quando o Debezium tenta criar a publication antes da tabela `outbox_messages` existir (race condition de inicialização). O `infra/postgres/init.sql` pré-cria as tabelas para evitar isso, mas só é executado na **primeira inicialização de um volume novo**.
 
 Se o volume `postgres-data` já existia antes da adição do `init.sql`, registre o conector manualmente após o stack estar no ar:
 
 ```powershell
-docker cp .\tools\debezium\order-outbox-connector.json otel-lgtm-dotnet-microservices-kafka-connect-1:/tmp/connector.json
+docker cp .\ops\debezium\order-outbox-connector.json otel-lgtm-dotnet-microservices-kafka-connect-1:/tmp/connector.json
 docker exec otel-lgtm-dotnet-microservices-kafka-connect-1 curl -sf -X POST http://localhost:8083/connectors -H "Content-Type: application/json" -d "@/tmp/connector.json"
 ```
 
@@ -331,10 +322,10 @@ Os passos deste README foram alinhados diretamente com os artefatos versionados 
 - `src/OrderService/Program.cs`
 - `src/OrderService/Data/OutboxMessage.cs`
 - `src/ProcessingWorker/Messaging/KafkaTracingHelper.cs`
-- `tools/debezium/order-outbox-connector.json`
-- `tools/postgres/init.sql`
-- `grafana/dashboards/otel-poc-overview.json`
-- `grafana/provisioning/alerting/otel-poc-alert-rules.yaml`
-- `grafana/provisioning/alerting/otel-poc-contact-points.yaml`
-- `grafana/provisioning/alerting/otel-poc-notification-policies.yaml`
-- `tools/alert-webhook-mock/server.py`
+- `ops/debezium/order-outbox-connector.json`
+- `infra/postgres/init.sql`
+- `infra/grafana/dashboards/otel-poc-overview.json`
+- `infra/grafana/provisioning/alerting/otel-poc-alert-rules.yaml`
+- `infra/grafana/provisioning/alerting/otel-poc-contact-points.yaml`
+- `infra/grafana/provisioning/alerting/otel-poc-notification-policies.yaml`
+- `ops/alert-webhook-mock/server.py`

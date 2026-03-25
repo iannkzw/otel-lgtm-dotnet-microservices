@@ -64,7 +64,7 @@
 - **Collector:** `otel/opentelemetry-collector-contrib:latest`
 - **Observability backend:** `grafana/otel-lgtm:latest`
 - **Geração sintética:** `ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest`
-- **Webhook mock de alertas:** serviço Python customizado em `tools/alert-webhook-mock`
+- **Webhook mock de alertas:** serviço Python customizado em `ops/alert-webhook-mock`
 
 ## Observabilidade
 
@@ -88,7 +88,7 @@
 
 - **Dockerfiles multi-stage** para os três serviços .NET
 - **Task de build via container SDK 10** para `otel-poc.sln`
-- **PowerShell** para geração de carga em `tools/load-generator/generate-orders.ps1`
+- **PowerShell** para geração de carga em `ops/load-generator/generate-orders.ps1`
 - **Provisioning Grafana versionado** para dashboard e alertas
 
 ## Testing
