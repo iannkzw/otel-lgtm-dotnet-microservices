@@ -95,6 +95,8 @@ Juntos, eles cobrem tanto sintomas (latencia, erros) quanto causas (saturacao, t
 
 ## SLI, SLO e SLA
 
+**Contexto:** Em producao, nao basta o sistema "funcionar" -- e preciso saber *quao bem* ele funciona e quais sao as consequencias quando nao atinge o nivel esperado. SLI, SLO e SLA formam uma hierarquia que transforma observabilidade em compromisso: voce mede (SLI), define um objetivo interno (SLO) e formaliza com o cliente (SLA). Sem essa cadeia, qualquer numero de monitoramento e apenas dado sem significado.
+
 ### Definicoes
 
 | Conceito | Significado | O que define |
@@ -113,6 +115,23 @@ SLA  -->  "99% das requisicoes devem ter latencia < 500ms, senao credito de 10%"
 
 O SLA e sempre **mais permissivo** que o SLO. O SLO serve como "colchao" antes de violar o SLA.
 
+### Exemplos reais da industria
+
+**AWS S3 -- servico de armazenamento de arquivos na nuvem:**
+- SLI: de todas as requisicoes feitas ao S3 no mes, qual percentual recebeu resposta de sucesso (codigo 2xx)?
+- SLO interno: 99.99% das requisicoes devem ter sucesso (a Amazon nao publica esse numero, mas e o alvo que o time opera)
+- SLA contratual: se a disponibilidade cair abaixo de 99.9% no mes, o cliente recebe credito de 10% a 25% na fatura automaticamente
+
+**Google Cloud Run -- plataforma para rodar aplicacoes em containers:**
+- SLI: qual e o P99 de latencia das chamadas? Ou seja, 99% dos usuarios recebem resposta em quanto tempo?
+- SLO interno: esse P99 deve ser menor que 2 segundos na maior parte do tempo
+- SLA: o Google garante 99.9% de disponibilidade; se violar, o cliente recebe credito de servico (Google nao faz SLA publico de latencia, apenas de disponibilidade)
+
+**Stripe -- plataforma de pagamentos:**
+- SLI: de todas as tentativas de cobrar um cartao, qual percentual foi processada com sucesso (codigo 200) vs. falhou com erro do servidor (codigo 5xx)?
+- SLO interno: 99.99% das cobranças devem ser bem-sucedidas -- qualquer falha aqui representa dinheiro que nao entrou
+- SLA: 99.9% de uptime mensal; abaixo disso, credito proporcional ao tempo fora do ar
+
 ### Exemplo pratico com a PoC
 
 | Camada | Exemplo |
@@ -123,7 +142,13 @@ O SLA e sempre **mais permissivo** que o SLO. O SLO serve como "colchao" antes d
 
 ### Error Budget
 
-O **error budget** e o complemento do SLO: se o SLO e 99.5%, voce tem 0.5% de "orcamento de erros". Enquanto estiver dentro do budget, o time pode priorizar features; quando esgotar, prioriza confiabilidade.
+O **error budget** e o complemento do SLO: se o SLO e 99.5%, voce tem 0.5% de "orcamento de erros" -- equivalente a ~3.6 horas de indisponibilidade por mes. Enquanto estiver dentro do budget, o time pode priorizar features; quando esgotar, toda a capacidade vai para confiabilidade.
+
+```
+SLO 99.5% num mes (30 dias) = 0.5% de budget
+  -> 30 dias * 24h * 60min * 0.5% = ~216 minutos de downtime permitido
+  -> Se um incidente consumiu 180 minutos, restam apenas 36 minutos no mes
+```
 
 ---
 

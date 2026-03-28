@@ -4,32 +4,42 @@
 
 1. [O que sao Metricas](#o-que-sao-metricas)
 2. [Tipos de Metricas](#tipos-de-metricas)
-3. [Nomenclatura Prometheus](#nomenclatura-prometheus)
-4. [Metricas da PoC](#metricas-da-poc)
-5. [PromQL Essencial](#promql-essencial)
-6. [Boas Praticas](#boas-praticas)
-7. [Avancado](#avancado)
-8. [Referencias](#referencias)
+3. [Percentis: P50, P95, P99](#percentis-p50-p95-p99)
+4. [Nomenclatura Prometheus](#nomenclatura-prometheus)
+5. [Metricas da PoC](#metricas-da-poc)
+6. [PromQL Essencial](#promql-essencial)
+7. [Boas Praticas](#boas-praticas)
+8. [Avancado](#avancado)
+9. [Referencias](#referencias)
 
 ---
 
 ## O que sao Metricas
 
-Metricas sao **valores numericos medidos ao longo do tempo**. Cada metrica e armazenada como uma **time series** -- uma sequencia de pares (timestamp, valor) identificada por um nome e um conjunto de labels (chave-valor).
+Metricas sao **valores numericos medidos ao longo do tempo**. Pense nelas como um painel de instrumentos de um carro: velocidade atual, temperatura do motor, nivel de combustivel. Cada indicador e um numero que e amostrado periodicamente e armazenado para analise posterior.
+
+Tecnicamente, cada metrica e armazenada como uma **time series** — uma sequencia de pares `(timestamp, valor)` identificada por um nome e um conjunto de **labels** (chave-valor que funcionam como filtros).
 
 ```
+# Leitura: "as 19:00:00, o OrderService criou 42 pedidos com sucesso"
 orders_created_total{result="created", service="OrderService"} 42  @1711324800
+
+# Leitura: "15 segundos depois, eram 43"
 orders_created_total{result="created", service="OrderService"} 43  @1711324815
 ```
 
-### Caracteristicas fundamentais
+O Prometheus (nosso banco de dados de metricas) coleta esses valores a cada 15 segundos (scrape interval) e os armazena para que possamos consultar qualquer periodo do passado.
+
+### Por que usar metricas?
 
 | Propriedade | Descricao |
 |------------|-----------|
-| **Baixo custo** | Metricas sao valores numericos agregados; nao armazenam detalhes individuais como traces ou logs |
-| **Alta cardinalidade temporal** | Coletadas a cada N segundos (tipicamente 15s), permitem analise detalhada ao longo do tempo |
-| **Ideais para alertas** | Queries rapidas e previsaveis, adequadas para avaliacao continua por regras de alerta |
-| **Dimensionais** | Labels permitem filtrar e agrupar (ex: por servico, resultado, topico Kafka) |
+| **Baixo custo** | Sao apenas numeros agregados; muito mais leves que logs ou traces |
+| **Rapidas para consultar** | Ideais para dashboards em tempo real e alertas |
+| **Ideais para alertas** | "Se o P95 de latencia superar 500ms por 5 minutos, me avise" |
+| **Dimensionais** | Labels permitem fatiar os dados (ex: por servico, por tipo de erro) |
+
+**Limitacao importante:** metricas nao guardam detalhes individuais. Elas dizem "houve 10 erros", mas nao "qual foi a mensagem de erro do request X". Para isso, use logs ou traces.
 
 ---
 
@@ -48,7 +58,9 @@ orders_created_total{result="created", service="OrderService"} 43  @1711324815
 
 ### Counter
 
-Um counter e um valor que **so cresce** (ou reseta para zero quando o processo reinicia). Nunca faz sentido olhar o valor absoluto de um counter; o que importa e a **taxa de variacao**.
+Um counter e um valor que **so cresce** (ou reseta para zero quando o processo reinicia). Pense no odometro de um carro: ele nunca volta atras.
+
+**Consequencia pratica:** nunca faz sentido olhar o valor absoluto de um counter. Se o counter tem valor 1042, isso nao diz nada — o que importa e *quantos eventos ocorreram no ultimo intervalo*. Para isso usamos `rate()` e `increase()`.
 
 **Exemplo na PoC:**
 
@@ -77,7 +89,9 @@ increase(orders_created_total[1h])
 
 ### Gauge
 
-Um gauge e um valor que **sobe e desce** livremente. Representa o estado *atual* de algo.
+Um gauge e um valor que **sobe e desce** livremente. Representa o estado *atual* de algo — como o nivel de combustivel ou a quantidade de pedidos na fila agora.
+
+Ao contrario do counter, o valor absoluto de um gauge e util e pode ser lido diretamente.
 
 **Exemplo na PoC:**
 
@@ -119,11 +133,29 @@ avg_over_time(kafka_consumer_lag{consumer_group="processing-worker"}[10m])
 
 ### Histogram
 
-Um histogram distribui observacoes em **buckets** (faixas de valores). O Prometheus armazena tres time series para cada histogram:
+Um histogram e o tipo mais sofisticado. Ele serve para medir **distribuicoes de valores** — tipicamente duracoes de operacoes ou tamanhos de payloads.
 
-- `_bucket{le="X"}` -- contagem acumulada de observacoes <= X
-- `_sum` -- soma de todos os valores observados
-- `_count` -- total de observacoes
+**Por que nao usar um gauge ou counter para latencia?**
+
+Imagine que voce quer saber a latencia do seu servico. Um gauge com "latencia atual" mostra apenas o ultimo request. Um counter nao faz sentido para latencia. O que voce realmente quer saber e: "a maioria dos requests esta rapida, mas quantos estao lentos?"
+
+O histogram resolve isso dividindo os valores em **buckets** (faixas). Por exemplo:
+
+```
+Bucket <= 50ms:  850 requests  (a maioria e rapida)
+Bucket <= 100ms: 930 requests
+Bucket <= 250ms: 980 requests
+Bucket <= 500ms: 995 requests
+Bucket <= +Inf:  1000 requests (total)
+```
+
+Com essa distribuicao, conseguimos calcular percentis — veja a secao [Percentis](#percentis-p50-p95-p99) para entender o que sao.
+
+O Prometheus armazena tres time series para cada histogram:
+
+- `_bucket{le="X"}` — contagem acumulada de observacoes <= X
+- `_sum` — soma de todos os valores observados
+- `_count` — total de observacoes
 
 **Exemplo na PoC:**
 
@@ -185,6 +217,72 @@ A PoC usa **exclusivamente Histograms**, que e a recomendacao padrao.
 
 ---
 
+## Percentis: P50, P95, P99
+
+Esta e uma das partes mais importantes para entender metricas de performance. Se voce ja viu "P95 de latencia" em algum dashboard mas nao sabia o que significava, esta secao e para voce.
+
+### O que e um percentil?
+
+Um **percentil** divide uma distribuicao de valores em partes. O percentil X significa: "X% das observacoes ficaram abaixo desse valor".
+
+**Exemplo concreto:** imagine que voce mediu a latencia de 1000 requests e ordenou os valores do menor para o maior.
+
+```
+P50 (Mediana) = 45ms   → 500 requests foram mais rapidos que 45ms
+P95           = 320ms  → 950 requests foram mais rapidos que 320ms
+P99           = 850ms  → 990 requests foram mais rapidos que 850ms
+```
+
+Interpretando:
+- **P50 = 45ms**: metade dos seus usuarios teve latencia abaixo de 45ms. E a experiencia "tipica".
+- **P95 = 320ms**: 95% dos usuarios tiveram latencia abaixo de 320ms. Os 5% mais lentos esperaram mais que isso.
+- **P99 = 850ms**: 99% dos usuarios tiveram latencia abaixo de 850ms. O 1% mais lento esperou quase 1 segundo.
+
+### Por que nao usar a media?
+
+A media e enganosa. Considere dois cenarios:
+
+```
+Cenario A: 990 requests em 10ms, 10 requests em 5000ms
+  → Media: (990 * 10 + 10 * 5000) / 1000 = 59,9ms  (parece ok)
+  → P99: 5000ms  (1% dos usuarios esperou 5 segundos!)
+
+Cenario B: todos os 1000 requests em 60ms
+  → Media: 60ms
+  → P99: 60ms
+```
+
+Ambos tem media ~60ms, mas o Cenario A tem um problema serio que a media esconde. Os percentis revelam a **cauda da distribuicao** — os usuarios que tiveram a pior experiencia.
+
+**Convencao de mercado:**
+- **P50** — experiencia tipica do usuario
+- **P95** — pior caso que a maioria dos usuarios enfrenta. SLOs comuns usam P95 < 200ms para APIs web.
+- **P99** — casos extremos. Util para detectar timeouts e erros que afetam uma minoria mas podem ser criticos.
+
+### Como calcular percentis com Histogram
+
+No Prometheus, usamos `histogram_quantile()`. O valor do quantil e o percentil dividido por 100:
+
+```promql
+# P95 = quantil 0.95
+histogram_quantile(0.95,
+  sum by (le) (
+    rate(orders_create_duration_milliseconds_bucket[5m])
+  )
+)
+
+# P50 = quantil 0.50 (mediana)
+histogram_quantile(0.50,
+  sum by (le) (
+    rate(orders_create_duration_milliseconds_bucket[5m])
+  )
+)
+```
+
+O `sum by (le)` e obrigatorio para agregar os buckets de todas as instancias do servico antes de calcular o percentil.
+
+---
+
 ## Nomenclatura Prometheus
 
 O OpenTelemetry SDK converte automaticamente os nomes das metricas para o formato Prometheus. Entender a convencao ajuda a escrever PromQL.
@@ -233,34 +331,38 @@ Tabela completa de todas as metricas instrumentadas na PoC:
 
 ## PromQL Essencial
 
+PromQL (Prometheus Query Language) e a linguagem usada para consultar metricas. Aqui estao as funcoes que voce vai usar no dia a dia.
+
 ### Funcoes fundamentais
 
 #### `rate(counter[intervalo])`
 
-Calcula a taxa **por segundo** de incremento de um counter, tratando automaticamente resets.
+Calcula a **taxa por segundo** de incremento de um counter, tratando automaticamente resets do processo.
 
 ```promql
-# Pedidos criados por segundo (ultimos 5 min)
+# "Quantos pedidos sao criados por segundo, em media, nos ultimos 5 minutos?"
 rate(orders_created_total{result="created"}[5m])
 ```
 
-Regra pratica: o intervalo deve ser pelo menos 4x o scrape interval (se scrape = 15s, use >= 1m).
+**Por que `[5m]`?** O intervalo define a janela de tempo usada para calcular a taxa. Janelas muito curtas sao ruidosas; muito longas, lentas para reagir. Regra pratica: use pelo menos 4x o scrape interval (scrape = 15s → use >= 1m).
 
 #### `increase(counter[intervalo])`
 
-Retorna o **incremento absoluto** no intervalo. Equivale a `rate() * duracao_em_segundos`.
+Retorna o **incremento absoluto** no intervalo. Mais intuitivo que `rate()` quando voce quer saber "quantos eventos aconteceram".
 
 ```promql
-# Pedidos criados na ultima hora
+# "Quantos pedidos foram criados na ultima hora?"
 increase(orders_created_total[1h])
 ```
 
+`increase()` e equivalente a `rate() * duracao_em_segundos`. Use `rate()` para dashboards de throughput (eventos/s) e `increase()` para contagens em um periodo.
+
 #### `histogram_quantile(quantil, buckets)`
 
-Calcula o quantil (percentil) a partir dos buckets do histogram.
+Calcula o percentil a partir dos buckets de um histogram. Veja a secao [Percentis](#percentis-p50-p95-p99) para a explicacao conceitual.
 
 ```promql
-# P95 de latencia de criacao
+# "Qual e a latencia que 95% dos requests de criacao de pedido ficam abaixo?"
 histogram_quantile(0.95,
   sum by (le) (
     rate(orders_create_duration_milliseconds_bucket{result="created"}[5m])
@@ -275,28 +377,28 @@ histogram_quantile(0.50,
 )
 ```
 
-O `sum by (le)` e **obrigatorio** para agregar entre instancias mantendo os buckets.
+O `sum by (le)` e **obrigatorio**: ele soma os buckets de todas as replicas do servico antes de calcular o percentil. Sem ele, o resultado seria o percentil de apenas uma instancia.
 
 #### `sum by (label)` e `avg by (label)`
 
-Agrega series por labels especificas.
+Agrega multiplas time series em uma so, agrupando por labels.
 
 ```promql
-# Taxa de erros por tipo de resultado no ProcessingWorker
+# "Qual e a taxa de erro de cada tipo no ProcessingWorker?"
 sum by (result) (
   rate(orders_processed_total{result!="processed"}[5m])
 )
 
-# Lag medio por consumer_group
+# "Qual e o lag medio de cada consumer group?"
 avg by (consumer_group) (kafka_consumer_lag)
 ```
 
 #### `avg_over_time(gauge[intervalo])`
 
-Media de um gauge ao longo do tempo.
+Media de um gauge ao longo do tempo. Util para suavizar oscilacoes.
 
 ```promql
-# Media do backlog nos ultimos 30 minutos
+# "Qual foi o backlog medio nos ultimos 30 minutos?"
 avg_over_time(orders_backlog_current{status="PendingPublish"}[30m])
 ```
 
@@ -307,7 +409,7 @@ avg_over_time(orders_backlog_current{status="PendingPublish"}[30m])
 #### Taxa de erro geral do OrderService
 
 ```promql
-# Porcentagem de erros na criacao de pedidos
+# "Qual porcentagem das tentativas de criacao esta falhando?"
 sum(rate(orders_created_total{result!="created"}[5m]))
 /
 sum(rate(orders_created_total[5m]))
@@ -318,16 +420,19 @@ sum(rate(orders_created_total[5m]))
 
 ```promql
 # Comparar entrada vs saida do pipeline
-# Entrada: pedidos criados
+# Entrada: pedidos criados com sucesso
 sum(rate(orders_created_total{result="created"}[5m]))
-# Saida: notificacoes persistidas
+
+# Saida: notificacoes persistidas com sucesso
 sum(rate(notifications_persisted_total{result="persisted"}[5m]))
 ```
+
+Se a entrada for consistentemente maior que a saida, ha acumulo no pipeline.
 
 #### Deteccao de acumulo no pipeline
 
 ```promql
-# Se o lag do consumer cresce consistentemente, ha acumulo
+# "O lag do consumer esta crescendo?" (compara o lag agora com 10 minutos atras)
 avg_over_time(kafka_consumer_lag{consumer_group="processing-worker"}[10m])
 > avg_over_time(kafka_consumer_lag{consumer_group="processing-worker"}[10m] offset 10m)
 ```
@@ -335,12 +440,12 @@ avg_over_time(kafka_consumer_lag{consumer_group="processing-worker"}[10m])
 #### Latencia media vs P95 do OrderService
 
 ```promql
-# Media
+# Media (pode ser enganosa — veja a secao de Percentis)
 rate(orders_create_duration_milliseconds_sum{result="created"}[5m])
 /
 rate(orders_create_duration_milliseconds_count{result="created"}[5m])
 
-# P95
+# P95 (mostra a experiencia do usuario nos piores 5% dos casos)
 histogram_quantile(0.95,
   sum by (le) (
     rate(orders_create_duration_milliseconds_bucket{result="created"}[5m])
@@ -348,7 +453,7 @@ histogram_quantile(0.95,
 )
 ```
 
-Comparar media com P95 revela se ha **cauda longa** de latencia (poucos requests muito lentos puxando a media).
+Comparar media com P95 revela se ha **cauda longa** de latencia: se P95 >> media, ha poucos requests muito lentos que nao aparecem na media mas afetam uma parcela dos usuarios.
 
 ---
 
@@ -356,7 +461,9 @@ Comparar media com P95 revela se ha **cauda longa** de latencia (poucos requests
 
 ### Cardinalidade
 
-**Cardinalidade** e o numero total de combinacoes unicas de labels para uma metrica. Alta cardinalidade causa:
+**Cardinalidade** e o numero total de combinacoes unicas de labels para uma metrica. Por exemplo, se uma metrica tem label `result` com 5 valores possiveis e label `service` com 3 valores, sua cardinalidade e 5 x 3 = 15 time series.
+
+Alta cardinalidade e um dos problemas mais comuns em producao e causa:
 
 - Uso excessivo de memoria no Prometheus.
 - Queries lentas.
@@ -364,7 +471,7 @@ Comparar media com P95 revela se ha **cauda longa** de latencia (poucos requests
 
 | Pratica | Exemplo bom | Exemplo ruim |
 |---------|-------------|--------------|
-| Labels com valores finitos | `result="created"` (enum) | `user_id="abc123"` (infinito) |
+| Labels com valores finitos | `result="created"` (enum com ~5 valores) | `user_id="abc123"` (infinito) |
 | Evitar IDs unicos como label | `status="PendingPublish"` | `order_id="550e8400..."` |
 | Labels previsaveis | `http_method="POST"` | `request_body="..."` |
 
@@ -373,7 +480,7 @@ Comparar media com P95 revela se ha **cauda longa** de latencia (poucos requests
 ### Labels
 
 - **Adicione labels que voce vai usar em queries e alertas.** Labels que ninguem filtra sao custo sem beneficio.
-- **Use valores consistentes.** Padronize enums (ex: `created`, `validation_failed` -- nunca misture `Created` e `created`).
+- **Use valores consistentes.** Padronize enums (ex: `created`, `validation_failed` — nunca misture `Created` e `created`).
 - **Nao repita informacao do nome da metrica nas labels.** Se a metrica se chama `orders_created_total`, nao adicione label `entity="order"`.
 
 ### O que NAO medir como metrica
@@ -393,7 +500,7 @@ Comparar media com P95 revela se ha **cauda longa** de latencia (poucos requests
 
 Exemplars sao **links de uma metrica para um trace especifico**. Quando uma metrica e registrada, o SDK pode anexar o `trace_id` e `span_id` da requisicao corrente como exemplar.
 
-Na PoC, exemplars estao habilitados com a politica `AlwaysOn`, significando que toda observacao de metrica inclui um exemplar. Isso permite, no Grafana, clicar em um ponto de uma metrica e navegar diretamente para o trace correspondente no Tempo.
+Na PoC, exemplars estao habilitados com a politica `AlwaysOn`, significando que toda observacao de metrica inclui um exemplar. Isso permite, no Grafana, clicar em um ponto de um grafico de latencia e navegar diretamente para o trace do request que causou aquele pico — conectando metricas e traces de forma pratica.
 
 Para detalhes completos de implementacao, consulte a documentacao de exemplars do projeto.
 
@@ -442,6 +549,8 @@ groups:
         annotations:
           summary: "P95 de latencia de criacao de pedidos acima de 500ms por 5 minutos"
 ```
+
+Leitura do alerta: "se 95% dos requests de criacao de pedido estao levando mais de 500ms, e essa condicao persiste por 5 minutos consecutivos, dispare um alerta de warning."
 
 ---
 
